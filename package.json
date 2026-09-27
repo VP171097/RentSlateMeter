@@ -1,9 +1,29 @@
 {
-  "name":"dynamic-meter-qr",
-  "private":true,
-  "version":"1.1.0",
-  "type":"module",
-  "scripts":{"dev":"vite","build":"vite build","preview":"vite preview"},
-  "dependencies":{"@supabase/supabase-js":"2.57.4","jspdf":"4.2.1","qrcode":"1.5.4","react":"19.1.1","react-dom":"19.1.1"},
-  "devDependencies":{"@vitejs/plugin-react":"5.0.4","vite":"7.1.7"}
+  "name": "dynamic-meter-qr",
+  "private": true,
+  "version": "1.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .js,.jsx",
+    "typecheck": "tsc --noEmit --allowJs --checkJs false --jsx react-jsx --moduleResolution bundler --module esnext --target es2022"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.57.4",
+    "jspdf": "4.2.1",
+    "qrcode": "1.5.4",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "5.0.4",
+    "vite": "7.1.7",
+    "eslint": "9.36.0",
+    "@eslint/js": "9.36.0",
+    "eslint-plugin-react-hooks": "6.1.1",
+    "eslint-plugin-react-refresh": "0.4.16",
+    "typescript": "5.9.2"
+  }
 }
