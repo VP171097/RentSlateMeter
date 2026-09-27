@@ -114,5 +114,21 @@ function Info({a,b}){return <div className="info"><span>{a}</span><strong>{b}</s
 function Modal({title,onClose,children}){return <div className="modal-backdrop"><div className="modal"><div className="modal-head"><h2>{title}</h2><button onClick={onClose}>×</button></div>{children}</div></div>}
 async function markPaid(b){const amount=prompt('Payment amount',String(b.total_amount));if(amount===null)return;const mode=prompt('Payment mode','UPI');if(mode===null)return;const {error}=await supabase.from('bill_payments').insert({bill_id:b.id,amount:Number(amount),payment_mode:mode,payment_date:new Date().toISOString().slice(0,10)});if(!error)await supabase.from('electricity_bills').update({status:'PAID'}).eq('id',b.id);location.reload()}
 async function downloadStored(b){if(!b.pdf_path)return alert('PDF is not available yet.');const {data,error}=await supabase.storage.from('electricity-bills').createSignedUrl(b.pdf_path,300,{download:b.bill_number+'.pdf'});if(error)return alert(error.message);location.href=data.signedUrl}
-async function downloadQR(m){const data=await QRCode.toDataURL(baseUrl+'#/m/'+m.public_token,{width:900,margin:2,errorCorrectionLevel:'H'});const a=document.createElement('a');a.href=data;a.download=m.meter_code+'-electricity-bill-access.png';a.click()}
+async function downloadQR(m,format='png'){
+ const portal=baseUrl+'#/m/'+m.public_token;
+ const data=await QRCode.toDataURL(portal,{width:1200,margin:3,errorCorrectionLevel:'H'});
+ if(format==='png'){
+  const a=document.createElement('a');a.href=data;a.download=m.meter_code+'-electricity-access.png';a.click();return;
+ }
+ const {jsPDF}=await import('jspdf');
+ const doc=new jsPDF({unit:'mm',format:'a4'});
+ doc.setFont('helvetica','bold');doc.setFontSize(22);doc.text('Electricity Bill Manager',105,30,{align:'center'});
+ doc.setFont('helvetica','normal');doc.setFontSize(13);doc.text('Permanent Meter Access',105,40,{align:'center'});
+ doc.addImage(data,'PNG',55,52,100,100);
+ doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Room '+(m.rooms?.room_number||'—'),105,164,{align:'center'});
+ doc.setFont('helvetica','normal');doc.setFontSize(12);doc.text('Meter: '+m.meter_code,105,173,{align:'center'});
+ doc.text('Scan this code to open the electricity account portal.',105,183,{align:'center',maxWidth:170});
+ doc.setFontSize(9);doc.text('This access code remains linked to this meter.',105,194,{align:'center'});
+ doc.save(m.meter_code+'-electricity-access.pdf');
+}
 createRoot(document.getElementById('root')).render(<App/>);
