@@ -229,6 +229,10 @@ html.dark .pill.red { background: rgba(127,29,29,.4); color: #fca5a5; }
 
 .settings-list { display: grid; gap: 14px; }
 .property-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+.property-head .row-actions { flex-wrap: nowrap; flex: 0 0 auto; }
+.property-head .eyebrow { min-width: 0; }
+.property-name { margin: 6px 0 2px; font-size: 22px; }
+.property-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; max-width: 420px; }
 .hint-inline { font-weight: 400; color: var(--text-faint); font-size: 12px; }
 .danger-outline { color: var(--red-600); }
 .danger-outline:hover:not(:disabled) { background: var(--red-50); border-color: var(--red-600); }
@@ -306,6 +310,12 @@ html.dark .pending-box { background: rgba(120,53,15,.25); border-color: rgba(217
   .brand-tagline { display: none; }
   .topbar .brand-name { font-size: 19px; }
   .topbar .hide-sm { display: none; }
+  .topbar { gap: 8px; }
+  .topbar .brand { min-width: 0; gap: 8px; }
+  .topbar .brand-mark { width: 38px; height: 38px; flex-basis: 38px; }
+  .topbar-actions { gap: 2px; flex: 0 0 auto; }
+  .topbar-actions .ghost { padding: 6px; min-height: 2.2rem; }
+  .topbar-actions .sm { padding: 6px 9px; }
 }
 @media (max-width: 440px) {
   .field-row, .mini-summary { grid-template-columns: 1fr; }

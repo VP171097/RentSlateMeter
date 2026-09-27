@@ -307,18 +307,22 @@ function PropertySettings({ properties, meters, settingsFor, onSaved, onAdd, onD
 }
 
 function PropertyForm({ property, meterCount, settings, onSaved, onDelete }) {
-  const [name, setName] = useState(property.name || ''), [address, setAddress] = useState(property.address || '');
-  const [rate, setRate] = useState(settings.rate_per_unit ?? DEFAULT_RATE);
-  const [dueDays, setDueDays] = useState(settings.due_days ?? 7);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(''), [address, setAddress] = useState('');
+  const [rate, setRate] = useState(''), [dueDays, setDueDays] = useState('');
   const [msg, setMsg] = useState(null), [saving, setSaving] = useState(false);
-  useEffect(() => { setName(property.name || ''); setAddress(property.address || ''); }, [property]);
-  useEffect(() => { setRate(settings.rate_per_unit ?? DEFAULT_RATE); setDueDays(settings.due_days ?? 7); }, [settings]);
+
+  const startEdit = () => {
+    setName(property.name || ''); setAddress(property.address || '');
+    setRate(String(settings.rate_per_unit ?? DEFAULT_RATE)); setDueDays(String(settings.due_days ?? 7));
+    setMsg(null); setEditing(true);
+  };
   const save = async e => {
     e.preventDefault(); setMsg(null);
     const value = Number(rate), days = Number(dueDays), cleanName = name.trim().replace(/\s+/g, ' ');
     if (!cleanName) return setMsg({ ok: false, text: 'Property name is required. It appears on every PDF.' });
     if (rate === '' || !Number.isFinite(value) || value < 0) return setMsg({ ok: false, text: 'Enter a valid rate.' });
-    if (!Number.isInteger(days) || days < 0) return setMsg({ ok: false, text: 'Enter whole days.' });
+    if (dueDays === '' || !Number.isInteger(days) || days < 0) return setMsg({ ok: false, text: 'Enter whole days.' });
     setSaving(true);
     const [p, st] = await Promise.all([
       supabase.from('properties').update({ name: cleanName, address: address.trim() || null }).eq('id', property.id),
@@ -326,21 +330,42 @@ function PropertyForm({ property, meterCount, settings, onSaved, onDelete }) {
     ]);
     setSaving(false);
     const error = p.error || st.error;
-    if (error) setMsg({ ok: false, text: error.message }); else { setMsg({ ok: true, text: 'Saved. New PDFs will show the updated property details.' }); onSaved(); }
+    if (error) return setMsg({ ok: false, text: error.message });
+    setEditing(false);
+    setMsg({ ok: true, text: 'Saved. New PDFs will show the updated property details.' });
+    onSaved();
   };
-  return <form className="card" onSubmit={save}>
-    <div className="property-head"><div className="eyebrow">Property · {meterCount} meter{meterCount === 1 ? '' : 's'}</div>
-      <button type="button" className="secondary sm danger-outline" onClick={onDelete} disabled={meterCount > 0} title={meterCount > 0 ? 'Delete its meters first' : 'Delete property'}><Trash2 size={14} />Delete</button></div>
-    <div className="field-row">
-      <label>Property name <span className="hint-inline">(shown on all PDFs)</span><input value={name} maxLength={100} onChange={e => setName(e.target.value)} placeholder="e.g. Sai Residency" /></label>
-      <label>Address<input value={address} maxLength={200} onChange={e => setAddress(e.target.value)} placeholder="Shown on bills" /></label>
-    </div>
-    <div className="settings-form">
-      <label>Rate per kWh (₹)<input type="number" min="0" step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>
-      <label>Due in (days)<input type="number" min="0" step="1" value={dueDays} onChange={e => setDueDays(e.target.value)} /></label>
-      <button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+
+  const head = <div className="property-head"><div className="eyebrow">Property · {meterCount} meter{meterCount === 1 ? '' : 's'}</div>
+    {!editing && <div className="row-actions">
+      <button type="button" className="secondary sm" onClick={startEdit}><Pencil size={14} />Edit</button>
+      <button type="button" className="secondary sm danger-outline" onClick={onDelete} disabled={meterCount > 0} title={meterCount > 0 ? 'Delete its meters first' : 'Delete property'}><Trash2 size={14} />Delete</button>
+    </div>}</div>;
+
+  if (!editing) return <section className="card">
+    {head}
+    <h2 className="property-name">{property.name}</h2>
+    <p className="muted small">{property.address || 'No address added'}</p>
+    <div className="property-facts">
+      <Info a="Rate" b={money(settings.rate_per_unit ?? DEFAULT_RATE) + ' / kWh'} />
+      <Info a="Bill due in" b={(settings.due_days ?? 7) + ' days'} />
     </div>
     {msg && <div className={msg.ok ? 'success' : 'alert'}>{msg.text}</div>}
+    {meterCount > 0 && <p className="hint">To delete this property, delete its meters first.</p>}
+  </section>;
+
+  return <form className="card" onSubmit={save}>
+    {head}
+    <div className="field-row">
+      <label>Property name <span className="hint-inline">(shown on all PDFs)</span><input autoFocus value={name} maxLength={100} onChange={e => setName(e.target.value)} placeholder="e.g. Sai Residency" /></label>
+      <label>Address<input value={address} maxLength={200} onChange={e => setAddress(e.target.value)} placeholder="Shown on bills" /></label>
+    </div>
+    <div className="field-row">
+      <label>Rate per kWh (₹)<input type="number" min="0" step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>
+      <label>Due in (days)<input type="number" min="0" step="1" value={dueDays} onChange={e => setDueDays(e.target.value)} /></label>
+    </div>
+    {msg && <div className={msg.ok ? 'success' : 'alert'}>{msg.text}</div>}
+    <div className="actions"><button type="button" className="secondary" onClick={() => { setEditing(false); setMsg(null); }} disabled={saving}>Cancel</button><button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button></div>
   </form>;
 }
 
@@ -685,35 +710,34 @@ function DeleteMeterModal({ meter, onClose, onDone }) {
   const remove = async () => {
     setBusy(true); setErr('');
     try {
-      const { data: stays, error: se } = await supabase.from('tenant_assignments').select('tenant_id').eq('meter_id', meter.id);
-      if (se) throw se;
-      // Bills first (payments and audit events cascade); the meter's FK blocks deletion while bills exist.
-      if (bills.length) {
-        const { error } = await supabase.from('electricity_bills').delete().eq('meter_id', meter.id);
-        if (error) throw error;
+      // One database transaction removes the meter, its bills (with payments and
+      // audit events), assignments, readings, orphaned tenants and the empty room.
+      const { data, error } = await supabase.rpc('delete_meter', { p_meter_id: meter.id });
+      if (error) {
+        if (error.code === 'PGRST202' || /could not find the function/i.test(error.message)) throw Error('Run the latest SQL migration (delete_meter) in Supabase first, then try again.');
+        throw error;
       }
-      const { error: me } = await supabase.from('meters').delete().eq('id', meter.id);
-      if (me) throw me;
-      // Best-effort cleanup: stored files, tenants left with no room, and the now-empty room.
-      const pdfs = bills.map(b => b.pdf_path).filter(Boolean), photos = bills.map(b => b.reading_photo_path).filter(Boolean);
-      if (pdfs.length) await supabase.storage.from('electricity-bills').remove(pdfs);
-      if (photos.length) await supabase.storage.from('meter-photos').remove(photos);
-      for (const id of new Set((stays || []).map(s => s.tenant_id))) {
-        const { count } = await supabase.from('tenant_assignments').select('id', { count: 'exact', head: true }).eq('tenant_id', id);
-        if (count === 0) await supabase.from('tenants').delete().eq('id', id);
+      // Then every stored file for this meter: bill PDFs and meter photos.
+      const prefix = data?.storage_prefix || meter.property_id + '/' + meter.id;
+      const referenced = { 'electricity-bills': (bills || []).map(b => b.pdf_path), 'meter-photos': (bills || []).map(b => b.reading_photo_path) };
+      const failed = [];
+      for (const bucket of ['electricity-bills', 'meter-photos']) {
+        const { data: files } = await supabase.storage.from(bucket).list(prefix, { limit: 1000 });
+        const paths = new Set([...(files || []).map(f => prefix + '/' + f.name), ...referenced[bucket].filter(Boolean)]);
+        if (paths.size) {
+          const { error: se } = await supabase.storage.from(bucket).remove([...paths]);
+          if (se) failed.push(bucket);
+        }
       }
-      if (meter.room_id) {
-        const { count } = await supabase.from('meters').select('id', { count: 'exact', head: true }).eq('room_id', meter.room_id);
-        if (count === 0) await supabase.from('rooms').delete().eq('id', meter.room_id);
-      }
+      if (failed.length) console.warn('Meter deleted, but some stored files could not be removed from', failed.join(', '));
       await onDone();
     } catch (e) { setErr(e.message || 'Could not delete the meter'); setBusy(false); }
   };
 
   return <Modal title={'Delete meter ' + meter.meter_code + '?'} onClose={onClose}>
     <p className="muted">Room {meter.rooms?.room_number || '—'} · Floor {meter.rooms?.floor || '—'}{tenant ? ' · Tenant ' + tenant.name : ''}</p>
-    <div className="alert"><b>This cannot be undone.</b> The meter, its permanent QR code and tenant assignment will be removed.
-      {bills === null ? ' Checking bills…' : bills.length ? ` ${bills.length} bill${bills.length === 1 ? '' : 's'} (with payments, PDFs and meter photos) will also be deleted permanently.` : ' It has no bills.'}
+    <div className="alert"><b>This cannot be undone.</b> Everything linked to this meter will be deleted: the meter and its permanent QR code, the tenant assignment (and the tenant record if they have no other room), all readings and meter photos, and the room if it becomes empty.
+      {bills === null ? ' Checking bills…' : bills.length ? ` That includes ${bills.length} bill${bills.length === 1 ? '' : 's'} with their payments, PDFs and history.` : ' It has no bills.'}
       {open > 0 && ` ${open} of them ${open === 1 ? 'is' : 'are'} still open.`}</div>
     <ConfirmByTyping word={meter.meter_code} value={typed} onChange={setTyped} />
     {err && <div className="alert">{err}</div>}

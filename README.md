@@ -52,7 +52,7 @@ Optional `.env` overrides: `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KE
 ## Supabase
 
 - Project: DynamicQR (ap-south-1).
-- Apply the migrations in `supabase/migrations/` in order. `20260928090000_rentslate_meter_fixes.sql` fixes admin bootstrap, RLS recursion and audit-event inserts. It also adds default billing settings for each property and the one-open-bill-per-meter index. `20260928100000_meter_photos.sql` adds the meter photo column and bucket. `20260928110000_owner_login.sql` adds `admin_exists()` for the sign-in page.
+- Apply the migrations in `supabase/migrations/` in order. `20260928090000_rentslate_meter_fixes.sql` fixes admin bootstrap, RLS recursion and audit-event inserts. It also adds default billing settings for each property and the one-open-bill-per-meter index. `20260928100000_meter_photos.sql` adds the meter photo column and bucket. `20260928110000_owner_login.sql` adds `admin_exists()` for the sign-in page. `20260928120000_delete_meter.sql` adds `delete_meter()`, which deletes a meter and all its data in one transaction.
 - Under **Authentication → URL Configuration**, set the Site URL and add a Redirect URL for `https://vp171097.github.io/RentSlateMeter/`. Password-reset and confirmation emails return there.
 - After the owner account is created, you can turn off **Allow new users to sign up** under Authentication → Sign In / Providers. Other accounts can't access owner data anyway.
 - Deploy the portal function without JWT verification, because tenants have no Supabase account:
