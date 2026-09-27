@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Pencil, Plus, QrCode, RefreshCw, Trash2, UserRound, Zap } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Pencil, Plus, QrCode, RefreshCw, Rows3, Trash2, UserRound, Zap } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { createBillPdf, downloadBlob } from './lib/billPdf';
 import { downloadQR, downloadTenantSnapshotPdf, portalUrl } from './lib/meterDocs';
@@ -108,7 +108,7 @@ export default function OwnerApp() {
       <button className="secondary sm" onClick={() => supabase.auth.signOut()}><LogOut size={15} /><span className="hide-sm">Sign out</span></button>
     </div></header>
     <div className="page-head"><div><div className="eyebrow">Owner console</div><h1>{ownerName ? 'Hello, ' + ownerName.split(' ')[0] + '.' : 'Meters, readings & bills.'}</h1><p className="muted">Approve tenant readings, generate bills and record payments.</p></div>
-      {properties.length > 0 && <button onClick={() => setModal({ type: 'meter' })}><Plus size={16} />Add meter</button>}</div>
+      {properties.length > 0 && <div className="row-actions"><button className="secondary" onClick={() => setModal({ type: 'bulkMeters' })}><Rows3 size={16} />Bulk add</button><button onClick={() => setModal({ type: 'meter' })}><Plus size={16} />Add meter</button></div>}</div>
     <nav className="tabs">
       {[['meters', 'Meters'], ['tenants', 'Tenants'], ['bills', 'Bills'], ['settings', 'Properties & Rates']].map(([k, l]) =>
         <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}{k === 'bills' && pending.length > 0 && <b>{pending.length}</b>}</button>)}
@@ -116,7 +116,7 @@ export default function OwnerApp() {
     {msg && <div className="alert">{msg}</div>}
     {busy ? <div className="card"><h2>Loading data…</h2></div>
       : properties.length === 0 ? <SetupCard onAdd={() => setModal({ type: 'property' })} />
-        : tab === 'meters' ? <Dashboard meters={meters} bills={bills} onAdd={() => setModal({ type: 'meter' })} onGenerate={m => setModal({ type: 'generate', meter: m })} onEditTenant={m => setModal({ type: 'tenant', meter: m })} onOpenRoom={m => setModal({ type: 'room', meter: m })} onDelete={m => setModal({ type: 'deleteMeter', meter: m })} onEdit={m => setModal({ type: 'editMeter', meter: m })} />
+        : tab === 'meters' ? <Dashboard meters={meters} bills={bills} onAdd={() => setModal({ type: 'meter' })} onBulkAdd={() => setModal({ type: 'bulkMeters' })} onGenerate={m => setModal({ type: 'generate', meter: m })} onEditTenant={m => setModal({ type: 'tenant', meter: m })} onOpenRoom={m => setModal({ type: 'room', meter: m })} onDelete={m => setModal({ type: 'deleteMeter', meter: m })} onEdit={m => setModal({ type: 'editMeter', meter: m })} />
           : tab === 'tenants' ? <TenantManager meters={meters} onEdit={m => setModal({ type: 'tenant', meter: m })} />
             : tab === 'bills' ? <Bills bills={bills} onApprove={b => setModal({ type: 'approve', bill: b })} onPaid={b => setModal({ type: 'pay', bill: b })} onDownload={downloadStored} onError={setMsg} />
               : <PropertySettings properties={properties} meters={meters} settingsFor={settingsFor} onSaved={load} onAdd={() => setModal({ type: 'property' })} onDelete={p => setModal({ type: 'deleteProperty', property: p })} />}
@@ -126,6 +126,7 @@ export default function OwnerApp() {
     {modal?.type === 'deleteProperty' && <DeletePropertyModal property={modal.property} onClose={close} onDone={done} />}
     {modal?.type === 'property' && <PropertyModal onClose={close} onDone={done} />}
     {modal?.type === 'meter' && <MeterModal properties={properties} onClose={close} onDone={done} />}
+    {modal?.type === 'bulkMeters' && <BulkMeterModal properties={properties} meters={meters} onClose={close} onDone={done} />}
     {modal?.type === 'editMeter' && <MeterModal properties={properties} meter={modal.meter} bills={bills} onClose={close} onDone={done} />}
     {modal?.type === 'generate' && <GenerateModal meter={modal.meter} bills={bills} settings={settingsFor(modal.meter.property_id)} onClose={close} onDone={done} />}
     {modal?.type === 'approve' && <ApproveModal bill={modal.bill} bills={bills} settings={settingsFor(modal.bill.property_id)} onClose={close} onDone={done} />}
@@ -148,7 +149,7 @@ function SetupCard({ onAdd }) {
     <button onClick={onAdd}><Plus size={16} />Add property</button></section>;
 }
 
-function Dashboard({ meters, bills, onAdd, onGenerate, onEditTenant, onOpenRoom, onDelete, onEdit }) {
+function Dashboard({ meters, bills, onAdd, onBulkAdd, onGenerate, onEditTenant, onOpenRoom, onDelete, onEdit }) {
   const pending = bills.filter(b => b.status === 'PENDING_APPROVAL').length;
   const due = bills.filter(b => b.status === 'APPROVED').reduce((s, b) => s + Number(b.total_amount || 0), 0);
   return <>
@@ -161,7 +162,7 @@ function Dashboard({ meters, bills, onAdd, onGenerate, onEditTenant, onOpenRoom,
       </div>
     </section>
     <section className="table-card"><div className="table-head"><h2>Meter registry</h2><span>All readings are kWh</span></div>
-      {meters.length === 0 ? <div className="empty"><Zap size={28} /><h3>No meters yet</h3><p>Add a room and meter to start billing.</p><button onClick={onAdd}><Plus size={16} />Add meter</button></div>
+      {meters.length === 0 ? <div className="empty"><Zap size={28} /><h3>No meters yet</h3><p>Add a room and meter to start billing, or add a whole floor at once.</p><div className="row-actions center-actions"><button className="secondary" onClick={onBulkAdd}><Rows3 size={16} />Bulk add</button><button onClick={onAdd}><Plus size={16} />Add meter</button></div></div>
         : meters.map(m => {
           const a = activeAssignment(m);
           return <div className="row" key={m.id}>
@@ -770,5 +771,139 @@ function DeletePropertyModal({ property, onClose, onDone }) {
     {err && <div className="alert">{err}</div>}
     <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button>
       <button className="danger" disabled={busy || typed.trim() !== 'DELETE'} onClick={remove}><Trash2 size={16} />{busy ? 'Deleting…' : 'Delete property'}</button></div>
+  </Modal>;
+}
+
+const BULK_MAX = 200;
+const emptyRow = () => ({ floor: '', room: '', code: '', number: '', opening: '0' });
+
+/** Parse rows pasted from Excel/Sheets/CSV: Floor, Room, Meter code, Meter number, Opening reading. */
+function parsePasted(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const rows = lines.map(l => l.split(l.includes('\t') ? '\t' : ',').map(c => c.trim().replace(/^"|"$/g, '')));
+  if (rows.length && /floor|room|meter/i.test(rows[0].join(' '))) rows.shift(); // header row
+  return rows.map(([floor = '', room = '', code = '', number = '', opening = '']) => ({ floor, room, code, number, opening: opening === '' ? '0' : opening }));
+}
+
+function BulkMeterModal({ properties, meters, onClose, onDone }) {
+  const [propertyId, setPropertyId] = useState(properties[0]?.id || '');
+  const [rows, setRows] = useState([emptyRow()]);
+  const [gen, setGen] = useState({ floor: '1', from: '101', to: '110', prefix: 'M-', opening: '0' });
+  const [paste, setPaste] = useState(''), [showPaste, setShowPaste] = useState(false);
+  const [saving, setSaving] = useState(false), [err, setErr] = useState('');
+
+  const filled = rows.filter(r => Object.entries(r).some(([k, v]) => k !== 'opening' && String(v).trim()));
+  const existingCodes = new Set(meters.filter(m => m.property_id === propertyId).map(m => m.meter_code.trim().toLowerCase()));
+  const seen = new Map();
+  filled.forEach(r => { const k = r.code.trim().toLowerCase(); if (k) seen.set(k, (seen.get(k) || 0) + 1); });
+  const rowError = r => {
+    if (!r.floor.trim() || !r.room.trim()) return 'Floor and room are required';
+    if (!r.code.trim()) return 'Meter code is required';
+    const k = r.code.trim().toLowerCase();
+    if (existingCodes.has(k)) return 'Meter code already exists';
+    if (seen.get(k) > 1) return 'Duplicate code in this list';
+    const o = Number(r.opening);
+    if (r.opening === '' || !Number.isFinite(o) || o < 0) return 'Opening reading must be 0 or more';
+    return null;
+  };
+  const errors = new Map(filled.map(r => [r, rowError(r)]));
+  const invalid = [...errors.values()].filter(Boolean).length;
+
+  const update = (i, key, value) => setRows(rs => rs.map((r, j) => j === i ? { ...r, [key]: value } : r));
+  const append = newRows => setRows(rs => [...rs.filter(r => filled.includes(r)), ...newRows].slice(0, BULK_MAX));
+
+  const generate = () => {
+    setErr('');
+    const from = parseInt(gen.from, 10), to = parseInt(gen.to, 10);
+    if (!gen.floor.trim()) return setErr('Enter the floor for the generated rooms.');
+    if (!Number.isInteger(from) || !Number.isInteger(to) || to < from) return setErr('Enter a valid room range, e.g. 101 to 110.');
+    if (to - from + 1 > BULK_MAX) return setErr('Generate at most ' + BULK_MAX + ' meters at a time.');
+    const width = gen.from.trim().length; // keep leading zeros, e.g. 001–010
+    append(Array.from({ length: to - from + 1 }, (_, i) => {
+      const room = String(from + i).padStart(width, '0');
+      return { floor: gen.floor.trim(), room, code: gen.prefix + room, number: '', opening: gen.opening || '0' };
+    }));
+  };
+
+  const addPasted = () => {
+    const parsed = parsePasted(paste);
+    if (!parsed.length) return setErr('Nothing to add. Paste rows with Floor, Room, Meter code, Meter number, Opening reading.');
+    setErr(''); append(parsed); setPaste(''); setShowPaste(false);
+  };
+
+  const save = async () => {
+    setErr('');
+    if (!propertyId) return setErr('Choose a property.');
+    if (!filled.length) return setErr('Add at least one meter.');
+    if (invalid) return setErr('Fix the highlighted rows first.');
+    setSaving(true);
+    let createdRooms = [];
+    try {
+      const { data: existing, error: re } = await supabase.from('rooms').select('id,room_number').eq('property_id', propertyId);
+      if (re) throw re;
+      const roomId = new Map((existing || []).map(r => [r.room_number, r.id]));
+      const missing = [...new Map(filled.filter(r => !roomId.has(r.room.trim())).map(r => [r.room.trim(), { property_id: propertyId, floor: r.floor.trim(), room_number: r.room.trim() }])).values()];
+      if (missing.length) {
+        const { data: made, error: me } = await supabase.from('rooms').insert(missing).select('id,room_number');
+        if (me) throw me;
+        createdRooms = made.map(r => r.id);
+        made.forEach(r => roomId.set(r.room_number, r.id));
+      }
+      // One insert for all meters: either every meter is added or none is.
+      const { error } = await supabase.from('meters').insert(filled.map(r => ({
+        property_id: propertyId, room_id: roomId.get(r.room.trim()), meter_code: r.code.trim(),
+        meter_number: r.number.trim() || null, opening_reading: Number(r.opening),
+      })));
+      if (error) throw Error(error.code === '23505' ? 'One of these meter codes already exists. Refresh and try again.' : error.message);
+      await onDone();
+    } catch (e) {
+      if (createdRooms.length) await supabase.from('rooms').delete().in('id', createdRooms);
+      setErr(e.message || 'Could not add meters'); setSaving(false);
+    }
+  };
+
+  return <Modal wide title="Bulk add meters" onClose={onClose}>
+    {properties.length > 1 && <label>Property<select value={propertyId} onChange={e => setPropertyId(e.target.value)}>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    <div className="bulk-gen">
+      <div className="eyebrow">Quick fill a room range</div>
+      <div className="bulk-gen-fields">
+        <label>Floor<input value={gen.floor} onChange={e => setGen({ ...gen, floor: e.target.value })} /></label>
+        <label>Rooms from<input inputMode="numeric" value={gen.from} onChange={e => setGen({ ...gen, from: e.target.value })} /></label>
+        <label>to<input inputMode="numeric" value={gen.to} onChange={e => setGen({ ...gen, to: e.target.value })} /></label>
+        <label>Code prefix<input value={gen.prefix} onChange={e => setGen({ ...gen, prefix: e.target.value })} /></label>
+        <label>Opening kWh<input type="number" min="0" step="0.001" value={gen.opening} onChange={e => setGen({ ...gen, opening: e.target.value })} /></label>
+        <button type="button" className="secondary" onClick={generate}><Plus size={15} />Add rows</button>
+      </div>
+      <p className="hint">Example: floor 1, rooms 101 to 110, prefix M- adds meters M-101 … M-110.</p>
+    </div>
+    <div className="row-actions bulk-tools">
+      <button type="button" className="secondary sm" onClick={() => setShowPaste(!showPaste)}>{showPaste ? 'Hide paste box' : 'Paste from Excel / Sheets'}</button>
+      <button type="button" className="secondary sm" onClick={() => setRows(rs => [...rs, emptyRow()].slice(0, BULK_MAX))}><Plus size={14} />Add empty row</button>
+      {filled.length > 0 && <button type="button" className="secondary sm danger-outline" onClick={() => setRows([emptyRow()])}>Clear all</button>}
+    </div>
+    {showPaste && <div className="bulk-paste">
+      <textarea value={paste} onChange={e => setPaste(e.target.value)} placeholder={'Floor, Room, Meter code, Meter number, Opening reading\n1, 101, M-101, EM1001, 0\n1, 102, M-102, EM1002, 0'} rows={5} />
+      <button type="button" className="sm" onClick={addPasted}>Add pasted rows</button>
+    </div>}
+    <div className="bulk-table-wrap"><table className="bulk-table">
+      <thead><tr><th>#</th><th>Floor</th><th>Room</th><th>Meter code</th><th>Meter number</th><th>Opening kWh</th><th aria-label="Remove" /></tr></thead>
+      <tbody>{rows.map((r, i) => {
+        const e = errors.get(r);
+        return <Fragment key={i}><tr className={e ? 'bad' : ''}>
+          <td className="muted">{i + 1}</td>
+          <td><input value={r.floor} onChange={ev => update(i, 'floor', ev.target.value)} placeholder="1" /></td>
+          <td><input value={r.room} onChange={ev => update(i, 'room', ev.target.value)} placeholder="101" /></td>
+          <td><input value={r.code} onChange={ev => update(i, 'code', ev.target.value)} placeholder="Required" title={e || ''} /></td>
+          <td><input value={r.number} onChange={ev => update(i, 'number', ev.target.value)} placeholder="Optional" /></td>
+          <td><input type="number" min="0" step="0.001" value={r.opening} onChange={ev => update(i, 'opening', ev.target.value)} /></td>
+          <td><button type="button" className="ghost" onClick={() => setRows(rs => rs.length > 1 ? rs.filter((_, j) => j !== i) : [emptyRow()])} aria-label={'Remove row ' + (i + 1)}><Trash2 size={15} /></button></td>
+        </tr>
+        {e && <tr className="bulk-err-row"><td colSpan={7}>Row {i + 1}: {e}</td></tr>}</Fragment>;
+      })}</tbody>
+    </table></div>
+    <p className="hint">{filled.length} meter{filled.length === 1 ? '' : 's'} ready{invalid ? ` · ${invalid} with problems` : ''}. Up to {BULK_MAX} per batch. Rooms are created automatically; each meter gets its own permanent QR code.</p>
+    {err && <div className="alert">{err}</div>}
+    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button>
+      <button disabled={saving || !filled.length || invalid > 0} onClick={save}>{saving ? 'Adding…' : `Add ${filled.length || ''} meter${filled.length === 1 ? '' : 's'}`}</button></div>
   </Modal>;
 }

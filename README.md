@@ -16,7 +16,7 @@ Each physical meter has a permanent QR code. Scanning it opens that meter's elec
 
 ### Owner
 1. Sign in to the owner console with email and password. **Forgot password?** sends a reset link, and the key icon in the console changes the password. **Set up owner account** (full name, email, password) appears only until the first owner exists; that account becomes the administrator. Click your name in the console to edit it.
-2. Add properties, then rooms and meters, with an opening reading for each meter.
+2. Add properties, then rooms and meters, with an opening reading for each meter. **Bulk add** creates many meters at once: quick-fill a room range (e.g. rooms 101–110 → M-101…M-110), paste rows from Excel or Google Sheets (Floor, Room, Meter code, Meter number, Opening reading), or type them in. Each row is checked before saving, and rooms are created automatically.
 3. Assign tenants with their registered mobile number, or move a tenant out. Bill history is kept.
 4. Generate a bill directly from a meter. It is final and the PDF downloads immediately.
 5. Review tenant readings against the attached meter photo: edit the reading or rate, then **Approve & create PDF**, or **Reject**.
