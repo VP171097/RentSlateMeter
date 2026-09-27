@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Building2, Camera, Download, FileText, LogOut, Plus, QrCode, RefreshCw, UserRound, Zap } from 'lucide-react';
+import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Plus, QrCode, RefreshCw, UserRound, Zap } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { createBillPdf, downloadBlob } from './lib/billPdf';
 import { downloadQR, downloadTenantSnapshotPdf, portalUrl } from './lib/meterDocs';
@@ -7,6 +7,7 @@ import {
   DEFAULT_RATE, activeAssignment, billNumber, byNewest, calcBill, cleanPhone, fmt, kwh, money, round2, round3, today,
 } from './lib/format';
 import { BrandMark, Info, Modal, StatusPill, ThemeToggle } from './ui';
+import { PasswordInput, friendlyAuthError, validatePassword } from './OwnerLogin';
 
 const OPEN = ['PENDING_APPROVAL', 'APPROVED'];
 const BILL_SELECT = '*,meters(meter_code,meter_number,public_token,rooms(floor,room_number),properties(name,address)),tenants(name,phone,tenant_assignments(meter_id,move_in_date,move_out_date)),bill_payments(payment_date,amount,payment_mode,receipt_no)';
@@ -54,6 +55,9 @@ export default function OwnerApp() {
   const [modal, setModal] = useState(null);
   const [busy, setBusy] = useState(true);
   const [msg, setMsg] = useState('');
+  const [email, setEmail] = useState('');
+
+  useEffect(() => { supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || '')); }, []);
 
   const load = useCallback(async () => {
     setBusy(true); setMsg('');
@@ -86,7 +90,7 @@ export default function OwnerApp() {
   if (admin === false) {
     return <main className="center"><div className="auth-shell"><BrandMark /><div className="card login">
       <div className="eyebrow">Owner console</div><h1>Not an administrator</h1>
-      <p className="muted">This account is signed in but is not the property administrator. Ask the owner to add you, or sign in with the owner account.</p>
+      <p className="muted">{email || 'This account'} is signed in but is not the owner account for this property. Sign out and sign in with the owner email.</p>
       {msg && <div className="alert">{msg}</div>}
       <button className="secondary" onClick={() => supabase.auth.signOut()}><LogOut size={16} />Sign out</button>
     </div></div></main>;
@@ -96,6 +100,8 @@ export default function OwnerApp() {
     <header className="topbar"><BrandMark /><div className="topbar-actions">
       <button className="ghost" onClick={load} title="Refresh" aria-label="Refresh"><RefreshCw size={18} /></button>
       <ThemeToggle />
+      <button className="ghost" onClick={() => setModal({ type: 'password' })} title="Change password" aria-label="Change password"><KeyRound size={18} /></button>
+      {email && <span className="topbar-user hide-sm" title={email}>{email}</span>}
       <button className="secondary sm" onClick={() => supabase.auth.signOut()}><LogOut size={15} /><span className="hide-sm">Sign out</span></button>
     </div></header>
     <div className="page-head"><div><div className="eyebrow">Owner console</div><h1>Meters, readings &amp; bills.</h1><p className="muted">Approve tenant readings, generate bills and record payments.</p></div>
@@ -111,6 +117,7 @@ export default function OwnerApp() {
           : tab === 'tenants' ? <TenantManager meters={meters} onEdit={m => setModal({ type: 'tenant', meter: m })} />
             : tab === 'bills' ? <Bills bills={bills} onApprove={b => setModal({ type: 'approve', bill: b })} onPaid={b => setModal({ type: 'pay', bill: b })} onDownload={downloadStored} onError={setMsg} />
               : <PropertySettings properties={properties} settingsFor={settingsFor} onSaved={load} onAdd={() => setModal({ type: 'property' })} />}
+    {modal?.type === 'password' && <PasswordModal email={email} onClose={close} />}
     {modal?.type === 'property' && <PropertyModal onClose={close} onDone={done} />}
     {modal?.type === 'meter' && <MeterModal properties={properties} onClose={close} onDone={done} />}
     {modal?.type === 'generate' && <GenerateModal meter={modal.meter} bills={bills} settings={settingsFor(modal.meter.property_id)} onClose={close} onDone={done} />}
@@ -545,5 +552,35 @@ function PayModal({ bill, onClose, onDone }) {
       <label>Receipt / reference no.<input value={receipt} onChange={e => setReceipt(e.target.value)} placeholder="Optional" /></label></div>
     {err && <div className="alert">{err}</div>}
     <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Mark as paid'}</button></div>
+  </Modal>;
+}
+
+function PasswordModal({ email, onClose }) {
+  const [current, setCurrent] = useState(''), [next, setNext] = useState(''), [confirm, setConfirm] = useState('');
+  const [err, setErr] = useState(''), [done, setDone] = useState(false), [saving, setSaving] = useState(false);
+  const save = async e => {
+    e.preventDefault(); setErr('');
+    const pwError = validatePassword(next) || (next !== confirm ? 'New passwords do not match.' : null);
+    if (pwError) return setErr(pwError);
+    setSaving(true);
+    try {
+      // Confirm the current password before changing it.
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password: current });
+      if (authError) throw Error(/invalid login/i.test(authError.message) ? 'Current password is incorrect.' : authError.message);
+      const { error } = await supabase.auth.updateUser({ password: next });
+      if (error) throw error;
+      setDone(true);
+    } catch (e) { setErr(friendlyAuthError(e)); } finally { setSaving(false); }
+  };
+  return <Modal title="Change password" onClose={onClose}>
+    {done ? <><div className="success">Password changed. Use the new password next time you sign in.</div><div className="actions"><button onClick={onClose}>Done</button></div></>
+      : <form onSubmit={save}>
+        <p className="muted small">Signed in as {email}</p>
+        <label>Current password<PasswordInput value={current} onChange={setCurrent} autoFocus /></label>
+        <label>New password<PasswordInput value={next} onChange={setNext} placeholder="New password" autoComplete="new-password" /><span className="hint">At least 8 characters, with a letter and a number.</span></label>
+        <label>Confirm new password<PasswordInput value={confirm} onChange={setConfirm} placeholder="Repeat new password" autoComplete="new-password" /></label>
+        {err && <div className="alert">{err}</div>}
+        <div className="actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button disabled={saving}>{saving ? 'Saving…' : 'Change password'}</button></div>
+      </form>}
   </Modal>;
 }
