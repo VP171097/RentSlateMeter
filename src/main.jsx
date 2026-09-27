@@ -38,7 +38,7 @@ function Login(){
 function OwnerApp(){
  const [tab,setTab]=useState('dashboard'),[meters,setMeters]=useState([]),[bills,setBills]=useState([]),[settings,setSettings]=useState(null),[modal,setModal]=useState(null),[busy,setBusy]=useState(true),[msg,setMsg]=useState('');
  const load=async()=>{setBusy(true);setMsg('');const [m,b,s]=await Promise.all([
-  supabase.from('meters').select('id,property_id,meter_code,meter_number,status,opening_reading,notes,public_token,rooms(floor,room_number),properties(name,address),tenant_assignments(id,tenant_id,move_in_date,move_out_date,tenants(id,name,phone,notes))').order('meter_code'),
+  supabase.from('meters').select('id,property_id,room_id,meter_code,meter_number,status,opening_reading,notes,public_token,rooms(floor,room_number),properties(name,address),tenant_assignments(id,tenant_id,move_in_date,move_out_date,tenants(id,name,phone,notes))').order('meter_code'),
   supabase.from('electricity_bills').select('*,meters(meter_code,meter_number,public_token,rooms(floor,room_number),properties(name,address)),tenants(name,phone),bill_payments(payment_date,amount,payment_mode,receipt_no)').order('created_at',{ascending:false}).limit(100),
   supabase.from('billing_settings').select('*').limit(1).maybeSingle()
  ]);if(m.error||b.error||s.error)setMsg((m.error||b.error||s.error).message);setMeters(m.data||[]);setBills(b.data||[]);setSettings(s.data||{rate_per_unit:10,fixed_charge:0,tax_percent:0,due_days:7});setBusy(false)};
@@ -47,18 +47,34 @@ function OwnerApp(){
  return <main className="admin"><header><div><div className="eyebrow">OWNER CONSOLE</div><h1>Electricity Bill Manager</h1><p className="muted">Electricity billing, meter readings and tenant management.</p></div><button className="secondary" onClick={()=>supabase.auth.signOut()}>Sign out</button></header>
  <nav className="tabs"><button className={tab==='dashboard'?'active':''} onClick={()=>setTab('dashboard')}>Meters</button><button className={tab==='tenants'?'active':''} onClick={()=>setTab('tenants')}>Tenants</button><button className={tab==='bills'?'active':''} onClick={()=>setTab('bills')}>Bills {pending.length>0&&<b>{pending.length}</b>}</button><button className={tab==='settings'?'active':''} onClick={()=>setTab('settings')}>Billing Settings</button></nav>
  {msg&&<div className="alert">{msg}</div>}
- {busy?<div className="card"><h2>Loading data…</h2></div>:tab==='dashboard'?<Dashboard meters={meters} bills={bills} onGenerate={m=>setModal({type:'generate',meter:m})} onEditTenant={m=>setModal({type:'tenant',meter:m})}/>:tab==='tenants'?<TenantManager meters={meters} onEdit={m=>setModal({type:'tenant',meter:m})}/>:tab==='bills'?<Bills bills={bills} onApprove={b=>setModal({type:'approve',bill:b})} onPaid={markPaid} onDownload={downloadStored}/>:<Settings settings={settings} onSaved={load}/>}
+ {busy?<div className="card"><h2>Loading data…</h2></div>:tab==='dashboard'?<Dashboard meters={meters} bills={bills} settings={settings} onGenerate={m=>setModal({type:'generate',meter:m})} onEditTenant={m=>setModal({type:'tenant',meter:m})} onOpenRoom={m=>setModal({type:'room',meter:m})}/>:tab==='tenants'?<TenantManager meters={meters} onEdit={m=>setModal({type:'tenant',meter:m})}/>:tab==='bills'?<Bills bills={bills} onApprove={b=>setModal({type:'approve',bill:b})} onPaid={markPaid} onDownload={downloadStored}/>:<Settings settings={settings} onSaved={load}/>}
  {modal?.type==='generate'&&<GenerateModal meter={modal.meter} settings={settings} onClose={()=>setModal(null)} onDone={async()=>{setModal(null);await load()}}/>}
  {modal?.type==='approve'&&<ApproveModal bill={modal.bill} settings={settings} onClose={()=>setModal(null)} onDone={async()=>{setModal(null);await load()}}/>}
  {modal?.type==='tenant'&&<TenantModal meter={modal.meter} onClose={()=>setModal(null)} onDone={async()=>{setModal(null);await load()}}/>}
+ {modal?.type==='room'&&<RoomDetailsModal meter={modal.meter} bills={bills} settings={settings} onClose={()=>setModal(null)}/>}
  </main>
 }
 
-function Dashboard({meters,bills,onGenerate,onEditTenant}){
+function Dashboard({meters,bills,settings,onGenerate,onEditTenant,onOpenRoom}){
  const pending=bills.filter(b=>b.status==='PENDING_APPROVAL').length,paid=bills.filter(b=>b.status==='PAID').length;
- return <><section className="stats"><div><b>{meters.length}</b><span>Meters</span></div><div><b>{meters.filter(m=>m.tenant_assignments?.some(a=>!a.move_out_date)).length}</b><span>Occupied</span></div><div><b>{pending}</b><span>Pending Approval</span></div><div><b>{paid}</b><span>Paid Bills</span></div></section><section className="table-card"><div className="table-head"><h2>Meter registry</h2><span>All readings are kWh</span></div><div className="table">{meters.map(m=>{const a=m.tenant_assignments?.find(x=>!x.move_out_date);return <div className="row" key={m.id}><div><strong>{m.meter_code}</strong><small>Floor {m.rooms?.floor||'—'} · Room {m.rooms?.room_number||'—'}</small></div><div><strong>{a?.tenants?.name||'Vacant'}</strong><small>{a?.tenants?.phone||'No mobile registered'}</small></div><span className={'pill '+(a?'green':'')}>{a?'Occupied':'Vacant'}</span><button onClick={()=>onGenerate(m)}>Generate Bill</button><button className="secondary" onClick={()=>onEditTenant(m)}>Edit Tenant</button><button className="icon-btn" onClick={()=>downloadQR(m,'png')}>QR PNG</button><button className="icon-btn" onClick={()=>downloadQR(m,'pdf')}>QR PDF</button></div>})}</div></section></>
+ return <><section className="stats"><div><b>{meters.length}</b><span>Meters</span></div><div><b>{meters.filter(m=>m.tenant_assignments?.some(a=>!a.move_out_date)).length}</b><span>Occupied</span></div><div><b>{pending}</b><span>Pending Approval</span></div><div><b>{paid}</b><span>Paid Bills</span></div></section><section className="table-card"><div className="table-head"><h2>Meter registry</h2><span>All readings are kWh</span></div><div className="table">{meters.map(m=>{const a=m.tenant_assignments?.find(x=>!x.move_out_date);return <div className="row" key={m.id}><div><button className="link-btn" onClick={()=>onOpenRoom(m)} title="Open room details"><strong>{m.meter_code}</strong><small>Floor {m.rooms?.floor||'—'} · Room {m.rooms?.room_number||'—'}</small></button></div><div><strong>{a?.tenants?.name||'Vacant'}</strong><small>{a?.tenants?.phone||'No mobile registered'}</small></div><span className={'pill '+(a?'green':'')}>{a?'Occupied':'Vacant'}</span><button onClick={()=>onGenerate(m)}>Generate Bill</button><button className="secondary" onClick={()=>onEditTenant(m)}>Edit Tenant</button><button className="icon-btn" onClick={()=>onOpenRoom(m)} title="Open room details">↗ Room</button><button className="icon-btn" onClick={()=>downloadQR(m,'png')}>QR PNG</button><button className="icon-btn" onClick={()=>downloadQR(m,'pdf')}>QR PDF</button></div>})}</div></section></>
 }
 
+function RoomDetailsModal({meter,bills,settings,onClose}){
+ const active=meter.tenant_assignments?.find(a=>!a.move_out_date),tenant=active?.tenants||null;
+ const roomBills=bills.filter(b=>b.meter_id===meter.id).sort((a,b)=>new Date(b.bill_date)-new Date(a.bill_date));
+ const lastPaid=roomBills.find(b=>b.status==='PAID');
+ return <Modal title={'Room '+(meter.rooms?.room_number||'—')+' · '+meter.meter_code} onClose={onClose}>
+  <div className="room-detail-head"><div><div className="eyebrow">CURRENT ROOM SNAPSHOT</div><h3>{tenant?.name||'Vacant'}</h3><p className="muted">{meter.properties?.name||'Property'} · Floor {meter.rooms?.floor||'—'} · Room {meter.rooms?.room_number||'—'}</p></div><button className="download-arrow" title="Download complete current tenant data PDF" aria-label="Download complete current tenant data PDF" onClick={()=>downloadTenantSnapshotPdf(meter,bills,settings)}>↓</button></div>
+  <div className="portal-grid">
+   <Info a="Tenant ID" b={tenant?.id||'—'}/><Info a="Tenant name" b={tenant?.name||'Vacant'}/><Info a="Registered mobile" b={tenant?.phone||'—'}/><Info a="Tenant notes" b={tenant?.notes||'—'}/>
+   <Info a="Move-in date" b={active?.move_in_date?fmt(active.move_in_date):'—'}/><Info a="Move-out date" b={active?.move_out_date?fmt(active.move_out_date):'Active'}/><Info a="Meter number" b={meter.meter_number||'—'}/><Info a="Meter code" b={meter.meter_code}/>
+   <Info a="Rate" b={money(settings?.rate_per_unit||10)+' / kWh'}/><Info a="Last paid reading" b={lastPaid?.current_reading!=null?Number(lastPaid.current_reading).toFixed(3)+' kWh':Number(meter.opening_reading||0).toFixed(3)+' kWh'}/><Info a="Last paid amount" b={lastPaid?money(lastPaid.total_amount):'—'}/><Info a="Last payment date" b={lastPaid?fmt(lastPaid.bill_date):'—'}/>
+  </div>
+  <div className="download-note">The download arrow creates a separate PDF snapshot of the tenant and room data exactly as it exists now, with the permanent access code on the final page.</div>
+  <div className="actions"><button className="secondary" onClick={onClose}>Close</button><button onClick={()=>downloadTenantSnapshotPdf(meter,bills,settings)}>↓ Download Tenant Data PDF</button></div>
+ </Modal>
+}
 function TenantManager({meters,onEdit}){
  return <section className="table-card"><div className="table-head"><h2>Tenant details</h2><span>Owner-controlled</span></div><div className="table">{meters.map(m=>{const a=m.tenant_assignments?.find(x=>!x.move_out_date);return <div className="row tenant-row" key={m.id}><div><strong>{a?.tenants?.name||'Vacant'}</strong><small>{a?.tenants?.phone||'No registered mobile'}</small></div><div>Room {m.rooms?.room_number||'—'}<small>Floor {m.rooms?.floor||'—'} · Meter {m.meter_code}</small></div><span className="pill">{a?'Assigned':'Unassigned'}</span><button onClick={()=>onEdit(m)}>{a?'Edit Tenant':'Assign Tenant'}</button></div>})}</div></section>
 }
@@ -114,6 +130,39 @@ function Info({a,b}){return <div className="info"><span>{a}</span><strong>{b}</s
 function Modal({title,onClose,children}){return <div className="modal-backdrop"><div className="modal"><div className="modal-head"><h2>{title}</h2><button onClick={onClose}>×</button></div>{children}</div></div>}
 async function markPaid(b){const amount=prompt('Payment amount',String(b.total_amount));if(amount===null)return;const mode=prompt('Payment mode','UPI');if(mode===null)return;const {error}=await supabase.from('bill_payments').insert({bill_id:b.id,amount:Number(amount),payment_mode:mode,payment_date:new Date().toISOString().slice(0,10)});if(!error)await supabase.from('electricity_bills').update({status:'PAID'}).eq('id',b.id);location.reload()}
 async function downloadStored(b){if(!b.pdf_path)return alert('PDF is not available yet.');const {data,error}=await supabase.storage.from('electricity-bills').createSignedUrl(b.pdf_path,300,{download:b.bill_number+'.pdf'});if(error)return alert(error.message);location.href=data.signedUrl}
+async function downloadTenantSnapshotPdf(m,bills,settings){
+ const active=m.tenant_assignments?.find(a=>!a.move_out_date),tenant=active?.tenants||null;
+ const roomBills=bills.filter(b=>b.meter_id===m.id).sort((a,b)=>new Date(b.bill_date)-new Date(a.bill_date));
+ const lastPaid=roomBills.find(b=>b.status==='PAID');
+ const {jsPDF}=await import('jspdf');
+ const doc=new jsPDF({unit:'mm',format:'a4'});
+ const line=(label,value,y,x=20)=>{doc.setFont('helvetica','bold');doc.text(label,x,y);doc.setFont('helvetica','normal');doc.text(String(value||'—'),x+42,y,{maxWidth:135})};
+ doc.setFont('helvetica','bold');doc.setFontSize(21);doc.text('Electricity Bill Manager',105,25,{align:'center'});
+ doc.setFont('helvetica','normal');doc.setFontSize(12);doc.text('Complete Tenant & Room Data Snapshot',105,34,{align:'center'});
+ doc.setFontSize(9);doc.text('Generated on '+new Date().toLocaleString('en-IN'),105,41,{align:'center'});
+ doc.setFontSize(14);doc.setFont('helvetica','bold');doc.text('Property & Room',20,55);
+ doc.setFontSize(10);line('Property',m.properties?.name,65);line('Address',m.properties?.address,73);line('Floor',m.rooms?.floor,81);line('Room number',m.rooms?.room_number,89);line('Meter code',m.meter_code,97);line('Meter number',m.meter_number,105);line('Meter status',m.status,113);
+ doc.setFontSize(14);doc.setFont('helvetica','bold');doc.text('Current Tenant',20,130);
+ doc.setFontSize(10);line('Tenant ID',tenant?.id,140);line('Tenant name',tenant?.name||'Vacant',148);line('Registered mobile',tenant?.phone,156);line('Notes',tenant?.notes,164);line('Move-in date',active?.move_in_date?fmt(active.move_in_date):'—',172);line('Move-out date',active?.move_out_date?fmt(active.move_out_date):'Active',180);
+ doc.setFontSize(14);doc.setFont('helvetica','bold');doc.text('Billing Snapshot',20,198);
+ doc.setFontSize(10);line('Rate per kWh',money(settings?.rate_per_unit||10),208);line('Opening reading',Number(m.opening_reading||0).toFixed(3)+' kWh',216);line('Last paid reading',lastPaid?.current_reading!=null?Number(lastPaid.current_reading).toFixed(3)+' kWh':'—',224);line('Last paid amount',lastPaid?money(lastPaid.total_amount):'—',232);line('Last bill date',lastPaid?fmt(lastPaid.bill_date):'—',240);
+ doc.addPage();
+ doc.setFont('helvetica','bold');doc.setFontSize(18);doc.text('Recent Electricity Bills',105,25,{align:'center'});
+ let y=40;doc.setFontSize(9);doc.text('Bill number',20,y);doc.text('Date',75,y);doc.text('Consumption',105,y);doc.text('Amount',150,y);doc.text('Status',180,y);y+=7;
+ roomBills.slice(0,12).forEach(b=>{if(y>275){doc.addPage();y=20}doc.setFont('helvetica','normal');doc.text(String(b.bill_number||'—'),20,y);doc.text(fmt(b.bill_date),75,y);doc.text(Number(b.units||0).toFixed(2)+' kWh',105,y);doc.text(money(b.total_amount),150,y);doc.text(String(b.status||'—'),180,y);y+=7});
+ doc.addPage();
+ const portal=baseUrl+'#/m/'+m.public_token;
+ const qr=await QRCode.toDataURL(portal,{width:1400,margin:4,errorCorrectionLevel:'H'});
+ doc.setFont('helvetica','bold');doc.setFontSize(22);doc.text('Permanent Meter Access',105,28,{align:'center'});
+ doc.setFont('helvetica','normal');doc.setFontSize(12);doc.text('Room '+(m.rooms?.room_number||'—')+' · '+m.meter_code,105,37,{align:'center'});
+ doc.addImage(qr,'PNG',45,50,120,120);
+ doc.setFont('helvetica','bold');doc.setFontSize(14);doc.text('Current tenant: '+(tenant?.name||'Vacant'),105,180,{align:'center'});
+ doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text('Registered mobile: '+(tenant?.phone||'—'),105,188,{align:'center'});
+ doc.text('Scan to open the electricity account portal.',105,198,{align:'center'});
+ doc.text('This permanent access code is linked to the meter.',105,206,{align:'center'});
+ doc.setFontSize(8);doc.text('Snapshot generated '+new Date().toLocaleString('en-IN'),105,218,{align:'center'});
+ doc.save(m.meter_code+'-tenant-data-snapshot.pdf');
+}
 async function downloadQR(m,format='png'){
  const portal=baseUrl+'#/m/'+m.public_token;
  const data=await QRCode.toDataURL(portal,{width:1200,margin:3,errorCorrectionLevel:'H'});
