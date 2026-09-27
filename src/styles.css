@@ -291,6 +291,15 @@ html.dark .bulk-table .bulk-err-row td { color: #fca5a5; }
 .mini-summary b { display: block; margin-top: 4px; font-size: 14px; color: var(--text); }
 .preview-total { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 14px; border-radius: .75rem; background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 .preview-total .amount { font-size: 20px; }
+.preview-total.stacked { flex-direction: column; align-items: stretch; gap: 4px; }
+.preview-total .line { display: flex; justify-content: space-between; gap: 12px; font-weight: 500; }
+.preview-total .line.total { font-weight: 700; padding-top: 6px; margin-top: 2px; border-top: 1px solid currentColor; }
+.rent-box { margin: 12px 0; padding: 12px 14px; border: 1px dashed var(--border-strong); border-radius: .8rem; }
+.rent-box.on { border-style: solid; border-color: var(--brand-600); background: var(--accent-soft); }
+.rent-box .field-row label { margin: 10px 0 0; }
+.switch-row { display: flex; gap: 12px; align-items: flex-start; margin: 0; cursor: pointer; }
+.switch-row input { width: 20px; height: 20px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--brand-700); }
+.switch-row small { display: block; font-weight: 400; color: var(--text-muted); margin-top: 2px; }
 
 .room-detail-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
 .room-detail-head h3 { margin: 6px 0 4px; font-size: 22px; }

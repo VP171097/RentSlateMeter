@@ -307,7 +307,7 @@ function Bills({ bills, onApprove, onPaid, onDownload, onShare, onError }) {
     {shown.length === 0 ? <div className="empty">No bills here yet.</div> : <div className="bill-list">{shown.map(b =>
       <div className="bill-card" key={b.id}>
         <div><strong>{b.bill_number}</strong><small>{b.meters?.meter_code || '—'} · {b.tenants?.name || 'Vacant'} · {fmt(b.bill_date)} · {b.source === 'TENANT' ? 'Tenant reading' : 'Owner'}</small></div>
-        <div><span className="amount">{money(b.total_amount)}</span><small>{Number(b.units || 0).toFixed(2)} kWh</small></div>
+        <div><span className="amount">{money(b.total_amount)}</span><small>{Number(b.units || 0).toFixed(2)} kWh{Number(b.rent_amount) > 0 ? ' · incl. rent ' + money(b.rent_amount) : ''}</small></div>
         <StatusPill status={b.status} />
         <div className="row-actions">
           {b.status === 'PENDING_APPROVAL' && <button className="sm" onClick={() => onApprove(b)}>Review</button>}
@@ -490,15 +490,45 @@ function MeterModal({ properties, meter = null, bills = [], onClose, onDone }) {
   </Modal>;
 }
 
-function BillPreview({ previous, reading, rate, settings }) {
+const monthLabel = (d = new Date()) => d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+const lastRentFor = (meterId, bills) => bills.filter(b => b.meter_id === meterId && Number(b.rent_amount) > 0).sort(byNewest)[0]?.rent_amount;
+const RENT_MIGRATION_HINT = 'Run the latest SQL migration (bill rent) in Supabase first, then try again.';
+const rentError = e => (/rent_(amount|period)/.test(e?.message || '') ? Error(RENT_MIGRATION_HINT) : e);
+
+/** Validated rent to add to a bill: 0 when not added. */
+function rentValue(on, amount, period) {
+  if (!on) return { rent: 0, period: null };
+  const v = Number(amount);
+  if (amount === '' || !Number.isFinite(v) || v <= 0) throw Error('Enter the rent amount, or switch off "Add rent".');
+  return { rent: round2(v), period: period.trim() || null };
+}
+
+function RentFields({ on, setOn, amount, setAmount, period, setPeriod }) {
+  return <div className={'rent-box' + (on ? ' on' : '')}>
+    <label className="switch-row"><input type="checkbox" checked={on} onChange={e => setOn(e.target.checked)} /><span><b>Add rent to this bill</b><small>Optional. Rent appears on the bill only when added.</small></span></label>
+    {on && <div className="field-row">
+      <label>Rent amount (₹)<input type="number" min="0" step="1" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 8000" autoFocus /></label>
+      <label>Rent for<input value={period} maxLength={40} onChange={e => setPeriod(e.target.value)} placeholder="e.g. October 2026" /></label>
+    </div>}
+  </div>;
+}
+
+function BillPreview({ previous, reading, rate, settings, rent = 0 }) {
   const current = Number(reading);
   if (reading === '' || !Number.isFinite(current) || current < previous) return null;
   const c = calcBill(current - previous, rate, settings.fixed_charge, settings.tax_percent);
-  return <div className="preview-total"><span>{(current - previous).toFixed(3)} kWh × {money(rate)}</span><span className="amount">{money(c.total)}</span></div>;
+  const r = Number(rent) > 0 ? round2(rent) : 0;
+  if (!r) return <div className="preview-total"><span>{(current - previous).toFixed(3)} kWh × {money(rate)}</span><span className="amount">{money(c.total)}</span></div>;
+  return <div className="preview-total stacked">
+    <span className="line"><span>Electricity · {(current - previous).toFixed(3)} kWh × {money(rate)}</span><span>{money(c.total)}</span></span>
+    <span className="line"><span>Rent</span><span>{money(r)}</span></span>
+    <span className="line total"><span>Total</span><span className="amount">{money(c.total + r)}</span></span>
+  </div>;
 }
 
 function GenerateModal({ meter, bills, settings, onClose, onDone }) {
   const [reading, setReading] = useState(''), [notes, setNotes] = useState(''), [saving, setSaving] = useState(false), [err, setErr] = useState('');
+  const [rentOn, setRentOn] = useState(false), [rentAmount, setRentAmount] = useState(() => String(lastRentFor(meter.id, bills) ?? '')), [rentPeriod, setRentPeriod] = useState(() => monthLabel());
   const meterBills = useMemo(() => bills.filter(b => b.meter_id === meter.id).sort(byNewest), [bills, meter.id]);
   const lastPaid = meterBills.find(b => b.status === 'PAID');
   const openBill = meterBills.find(b => OPEN.includes(b.status));
@@ -517,11 +547,14 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
       const user = await currentUser();
       const tenant = activeAssignment(meter)?.tenants || null;
       const c = calcBill(current - previous, rate, settings.fixed_charge, settings.tax_percent);
+      const { rent, period } = rentValue(rentOn, rentAmount, rentPeriod);
       const d = today(), id = crypto.randomUUID(), path = meter.property_id + '/' + meter.id + '/' + id + '.pdf';
       const row = {
         id, property_id: meter.property_id, meter_id: meter.id, tenant_id: tenant?.id || null, bill_number: billNumber(), bill_date: d, reading_date: d,
         previous_reading: previous, current_reading: current, rate_per_unit: rate, energy_charge: c.energy, fixed_charge: c.fixed, other_charge: 0,
-        tax_amount: c.tax, total_amount: c.total, status: 'APPROVED', source: 'OWNER', approved_at: new Date().toISOString(), approved_by: user.id, notes: notes.trim() || null,
+        tax_amount: c.tax, total_amount: round2(c.total + rent), status: 'APPROVED', source: 'OWNER', approved_at: new Date().toISOString(), approved_by: user.id, notes: notes.trim() || null,
+        // Rent columns are only sent when rent is added (bills without rent work even before the rent migration).
+        ...(rent > 0 ? { rent_amount: rent, rent_period: period } : {}),
       };
       const bill = { ...row, units: round3(current - previous) };
       const history = [bill, ...(await paidHistory(meter.id))];
@@ -531,7 +564,7 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
       if (up.error) throw up.error;
       uploaded = path;
       const { error } = await supabase.from('electricity_bills').insert({ ...row, pdf_path: path });
-      if (error) throw error;
+      if (error) throw rentError(error);
       uploaded = null;
       await logEvent(id, 'OWNER_GENERATED', user.id, { current_reading: current, rate_per_unit: rate, total_amount: c.total });
       await onDone({ ...bill, pdf_path: path, meters: { meter_code: meter.meter_code, meter_number: meter.meter_number, public_token: meter.public_token, rooms: meter.rooms, properties: meter.properties }, tenants: tenant ? { name: tenant.name, phone: tenant.phone } : null, bill_payments: [] }, blob);
@@ -545,7 +578,8 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
     <div className="mini-summary"><span>Last paid reading<b>{kwh(previous)}</b></span><span>Rate<b>{money(rate)} / kWh</b></span></div>
     {openBill && <div className="alert">Bill {openBill.bill_number} is still {openBill.status === 'PENDING_APPROVAL' ? 'waiting for approval' : 'unpaid'}. Settle it before generating a new one.</div>}
     <label>Current kWh reading<input autoFocus type="number" min={previous} step="0.001" value={reading} onChange={e => setReading(e.target.value)} placeholder="Enter current kWh reading" /></label>
-    <BillPreview previous={previous} reading={reading} rate={rate} settings={settings} />
+    <RentFields on={rentOn} setOn={setRentOn} amount={rentAmount} setAmount={setRentAmount} period={rentPeriod} setPeriod={setRentPeriod} />
+    <BillPreview previous={previous} reading={reading} rate={rate} settings={settings} rent={rentOn ? Number(rentAmount) || 0 : 0} />
     <label>Note on bill (optional)<textarea value={notes} onChange={e => setNotes(e.target.value)} /></label>
     <p className="muted small">The bill date is today. Owner-generated bills are final. Next you can share the bill (message + PDF) with the tenant, or download it.</p>
     {err && <div className="alert">{err}</div>}
@@ -582,6 +616,9 @@ function ApproveModal({ bill, bills, settings, onClose, onDone, onApproved }) {
   const [saving, setSaving] = useState(false), [err, setErr] = useState('');
   const previous = Number(bill.previous_reading);
   const lastPaid = bills.filter(b => b.meter_id === bill.meter_id && b.status === 'PAID').sort(byNewest)[0];
+  const [rentOn, setRentOn] = useState(Number(bill.rent_amount) > 0);
+  const [rentAmount, setRentAmount] = useState(() => String(Number(bill.rent_amount) > 0 ? bill.rent_amount : lastRentFor(bill.meter_id, bills) ?? ''));
+  const [rentPeriod, setRentPeriod] = useState(() => bill.rent_period || monthLabel(new Date(bill.bill_date)));
 
   const approve = async () => {
     setSaving(true); setErr('');
@@ -591,7 +628,9 @@ function ApproveModal({ bill, bills, settings, onClose, onDone, onApproved }) {
       if (rate === '' || !Number.isFinite(r) || r < 0) throw Error('Enter a valid rate.');
       const user = await currentUser();
       const c = calcBill(current - previous, r, settings.fixed_charge, settings.tax_percent);
-      const changes = { current_reading: current, rate_per_unit: r, energy_charge: c.energy, fixed_charge: c.fixed, other_charge: 0, tax_amount: c.tax, total_amount: c.total, status: 'APPROVED', approved_at: new Date().toISOString(), approved_by: user.id };
+      const { rent, period } = rentValue(rentOn, rentAmount, rentPeriod);
+      const changes = { current_reading: current, rate_per_unit: r, energy_charge: c.energy, fixed_charge: c.fixed, other_charge: 0, tax_amount: c.tax, total_amount: round2(c.total + rent), status: 'APPROVED', approved_at: new Date().toISOString(), approved_by: user.id,
+        ...(rent > 0 || Number(bill.rent_amount) > 0 ? { rent_amount: rent, rent_period: rent > 0 ? period : null } : {}) };
       const merged = { ...bill, ...changes, units: round3(current - previous) };
       const history = [merged, ...(await paidHistory(bill.meter_id)).filter(h => h.id !== bill.id)];
       const ctx = { property: bill.meters?.properties, meter: { code: bill.meters?.meter_code, number: bill.meters?.meter_number }, room: bill.meters?.rooms, tenant: bill.tenants, moveInDate: billMoveIn(bill), history, lastPayment: lastPaymentFor(bill.meter_id, bills), previousDate: lastPaid?.reading_date, dueDays: settings.due_days };
@@ -600,7 +639,7 @@ function ApproveModal({ bill, bills, settings, onClose, onDone, onApproved }) {
       const up = await supabase.storage.from('electricity-bills').upload(path, blob, { contentType: 'application/pdf', upsert: true });
       if (up.error) throw up.error;
       const { data, error } = await supabase.from('electricity_bills').update({ ...changes, pdf_path: path }).eq('id', bill.id).eq('status', 'PENDING_APPROVAL').select('id');
-      if (error) throw error;
+      if (error) throw rentError(error);
       if (!data?.length) throw Error('This bill was already processed. Refresh to see its current status.');
       await logEvent(bill.id, 'OWNER_APPROVED', user.id, { current_reading: current, rate_per_unit: r, total_amount: c.total });
       await onApproved({ ...merged, pdf_path: path }, blob);
@@ -627,7 +666,8 @@ function ApproveModal({ bill, bills, settings, onClose, onDone, onApproved }) {
     {bill.notes && <div className="download-note">Tenant note: {bill.notes}</div>}
     <label>Current kWh reading<input type="number" min={previous} step="0.001" value={reading} onChange={e => setReading(e.target.value)} /></label>
     <label>Rate per kWh (₹)<input type="number" min={0} step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>
-    <BillPreview previous={previous} reading={reading} rate={Number(rate)} settings={settings} />
+    <RentFields on={rentOn} setOn={setRentOn} amount={rentAmount} setAmount={setRentAmount} period={rentPeriod} setPeriod={setRentPeriod} />
+    <BillPreview previous={previous} reading={reading} rate={Number(rate)} settings={settings} rent={rentOn ? Number(rentAmount) || 0 : 0} />
     {err && <div className="alert">{err}</div>}
     <div className="actions"><button className="danger" disabled={saving} onClick={reject}>Reject</button><span className="spacer" /><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving} onClick={approve}>{saving ? 'Working…' : 'Approve & create PDF'}</button></div>
   </Modal>;
@@ -944,9 +984,9 @@ function RoomHistory({ meter, bills, onShare, onError }) {
   const rejectedCount = all.filter(b => b.status === 'CANCELLED').length;
 
   const exportCsv = () => {
-    const head = ['Bill date', 'Bill no', 'Tenant', 'Previous reading', 'Current reading', 'Units (kWh)', 'Rate', 'Amount', 'Status', 'Paid on', 'Paid amount', 'Payment mode', 'Source'];
+    const head = ['Bill date', 'Bill no', 'Tenant', 'Previous reading', 'Current reading', 'Units (kWh)', 'Rate', 'Electricity', 'Rent', 'Rent for', 'Total', 'Status', 'Paid on', 'Paid amount', 'Payment mode', 'Source'];
     const esc = v => { const t = String(v ?? ''); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
-    const rows = shown.map(b => { const p = (b.bill_payments || [])[0]; return [b.bill_date, b.bill_number, b.tenants?.name || '', b.previous_reading, b.current_reading, b.units, b.rate_per_unit, b.total_amount, b.status, p?.payment_date || '', p?.amount || '', p?.payment_mode || '', b.source]; });
+    const rows = shown.map(b => { const p = (b.bill_payments || [])[0]; return [b.bill_date, b.bill_number, b.tenants?.name || '', b.previous_reading, b.current_reading, b.units, b.rate_per_unit, round2(Number(b.total_amount) - Number(b.rent_amount || 0)), Number(b.rent_amount || 0) || '', b.rent_period || '', b.total_amount, b.status, p?.payment_date || '', p?.amount || '', p?.payment_mode || '', b.source]; });
     const csv = [head, ...rows].map(r => r.map(esc).join(',')).join('\n');
     downloadBlob(new Blob([csv], { type: 'text/csv' }), meter.meter_code + '-bill-history' + (year === 'ALL' ? '' : '-' + year) + '.csv');
   };
@@ -974,7 +1014,7 @@ function RoomHistory({ meter, bills, onShare, onError }) {
             <td>{b.tenants?.name || '—'}</td>
             <td className="nowrap">{Number(b.previous_reading).toFixed(1)} → {Number(b.current_reading).toFixed(1)}</td>
             <td className="nowrap">{Number(b.units || 0).toFixed(2)}</td>
-            <td className="nowrap amount">{money(b.total_amount)}</td>
+            <td className="nowrap amount">{money(b.total_amount)}{Number(b.rent_amount) > 0 && <div className="muted small">incl. rent {money(b.rent_amount)}</div>}</td>
             <td><StatusPill status={b.status} /></td>
             <td className="small">{p ? <>{fmt(p.payment_date)}<div className="muted">{money(p.amount)} · {p.payment_mode}</div></> : '—'}</td>
             <td><div className="row-actions nowrap">

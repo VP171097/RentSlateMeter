@@ -100,7 +100,8 @@ export async function createBillPdf(bill, ctx, portalUrl) {
     return yy;
   };
 
-  let y = drawLetterhead(doc, { property: ctx.property, title: 'Electricity Bill cum Notice' });
+  const rent = Number(bill.rent_amount) || 0; // rent is mentioned only when it was added
+  let y = drawLetterhead(doc, { property: ctx.property, title: rent > 0 ? 'Electricity & Rent Bill' : 'Electricity Bill cum Notice' });
 
   // Bill meta strip
   box(left, y, width, 15, true);
@@ -132,6 +133,10 @@ export async function createBillPdf(bill, ctx, portalUrl) {
   if (Number(bill.fixed_charge)) rows.push(['Fixed Charges', money(bill.fixed_charge)]);
   if (Number(bill.other_charge)) rows.push(['Other Charges', money(bill.other_charge)]);
   if (Number(bill.tax_amount)) rows.push(['Tax', money(bill.tax_amount)]);
+  if (rent > 0) {
+    rows.push(['Electricity Total', money(Number(bill.total_amount) - rent)]);
+    rows.push(['Rent' + (bill.rent_period ? ' (' + bill.rent_period + ')' : ''), money(rent)]);
+  }
   rows.push(['Total Payable', money(bill.total_amount)]);
   const tableEnd = table(left, y + 4, 130, rows, ['Description', 'Amount / Value']);
 

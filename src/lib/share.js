@@ -20,6 +20,8 @@ export function billShareInfo(bill, { dueDays, ownerName } = {}) {
     units: bill.units ?? (Number(bill.current_reading) - Number(bill.previous_reading)),
     rate: bill.rate_per_unit,
     total: bill.total_amount,
+    rent: Number(bill.rent_amount) || 0,
+    rentPeriod: bill.rent_period || '',
     status: bill.status,
     dueDate: dueDays != null ? addDays(bill.bill_date, dueDays) : null,
     paidOn: lastPay?.payment_date || null,
@@ -34,15 +36,21 @@ export function billMessage(i) {
   const lines = [
     `Hi, ${i.tenantName}`,
     '',
-    `Your electricity bill${where ? ' for ' + where : ''} is ready.`,
+    `Your ${i.rent > 0 ? 'electricity and rent bill' : 'electricity bill'}${where ? ' for ' + where : ''} is ready.`,
     '',
     `Bill No: ${i.billNumber}`,
     `Bill date: ${fmt(i.billDate)}`,
     `Meter reading: ${n3(i.previous)} → ${n3(i.current)} kWh`,
     `Units consumed (till reading ${n3(i.current)}): ${n3(i.units)} kWh`,
     `Rate: ${money(i.rate)} per kWh`,
-    `Amount: ${money(i.total)}`,
   ];
+  if (i.rent > 0) {
+    lines.push(`Electricity charges: ${money(i.total - i.rent)}`);
+    lines.push(`Rent${i.rentPeriod ? ' (' + i.rentPeriod + ')' : ''}: ${money(i.rent)}`);
+    lines.push(`Total amount: ${money(i.total)}`);
+  } else {
+    lines.push(`Amount: ${money(i.total)}`);
+  }
   if (i.status === 'PAID') {
     lines.push(`Status: Paid${i.paidOn ? ' on ' + fmt(i.paidOn) : ''}. Thank you!`);
   } else {
