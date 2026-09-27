@@ -15,7 +15,7 @@ Each physical meter has a permanent QR code. Scanning it opens that meter's elec
 6. Download PDFs for the latest six approved or paid bills.
 
 ### Owner
-1. Sign in to the owner console. The first account created becomes the administrator.
+1. Sign in to the owner console with email and password. **Forgot password?** sends a reset link, and the key icon in the console changes the password. **Set up owner account** (full name, email, password) appears only until the first owner exists; that account becomes the administrator. Click your name in the console to edit it.
 2. Add properties, then rooms and meters, with an opening reading for each meter.
 3. Assign tenants with their registered mobile number, or move a tenant out. Bill history is kept.
 4. Generate a bill directly from a meter. It is final and the PDF downloads immediately.
@@ -47,12 +47,14 @@ npm run typecheck  # tsc -p jsconfig.json
 npm run build
 ```
 
-Optional `.env` overrides: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+Optional `.env` overrides: `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (the legacy name `VITE_SUPABASE_ANON_KEY` also works).
 
 ## Supabase
 
 - Project: DynamicQR (ap-south-1).
-- Apply the migrations in `supabase/migrations/` in order. `20260928090000_rentslate_meter_fixes.sql` fixes admin bootstrap, RLS recursion and audit-event inserts. It also adds default billing settings for each property and the one-open-bill-per-meter index. `20260928100000_meter_photos.sql` adds the meter photo column and bucket.
+- Apply the migrations in `supabase/migrations/` in order. `20260928090000_rentslate_meter_fixes.sql` fixes admin bootstrap, RLS recursion and audit-event inserts. It also adds default billing settings for each property and the one-open-bill-per-meter index. `20260928100000_meter_photos.sql` adds the meter photo column and bucket. `20260928110000_owner_login.sql` adds `admin_exists()` for the sign-in page.
+- Under **Authentication → URL Configuration**, set the Site URL and add a Redirect URL for `https://vp171097.github.io/DynamicQR/`. Password-reset and confirmation emails return there.
+- After the owner account is created, you can turn off **Allow new users to sign up** under Authentication → Sign In / Providers. Other accounts can't access owner data anyway.
 - Deploy the portal function without JWT verification, because tenants have no Supabase account:
   `supabase functions deploy meter-portal --no-verify-jwt`
 

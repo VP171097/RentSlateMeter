@@ -144,6 +144,49 @@ html.dark .pill.red { background: rgba(127,29,29,.4); color: #fca5a5; }
 .auth-hero .brand-name span { color: var(--gold-200); }
 .auth-hero .brand-tagline { opacity: .8; }
 
+/* ─── Owner sign-in (split layout, like RentSlate's login) ─── */
+.auth-split { min-height: 100vh; display: grid; grid-template-columns: minmax(340px, 1fr) minmax(360px, 1.1fr); }
+.auth-hero { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 40px clamp(28px, 4vw, 56px); color: #fff; overflow: hidden; }
+.ledger-grid-bg::after { content: ''; position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(#ffffff0d 1px, transparent 1px), linear-gradient(90deg, #ffffff0d 1px, transparent 1px); background-size: 36px 36px; }
+.auth-hero > * { position: relative; z-index: 1; }
+.auth-hero .brand-mark { background: rgba(255,255,255,.14); box-shadow: none; }
+.auth-hero-copy .eyebrow { color: var(--gold-200); }
+.auth-hero-copy h2 { margin: 10px 0 22px; font-size: clamp(28px, 3vw, 40px); line-height: 1.15; font-weight: 500; max-width: 16ch; }
+.auth-hero-copy ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.auth-hero-copy li { display: flex; align-items: center; gap: 10px; font-size: 15px; color: #e6fffa; }
+.auth-hero-copy li svg { flex: 0 0 auto; color: var(--gold-200); }
+.auth-hero-foot { font-size: 12px; color: rgba(255,255,255,.7); }
+.auth-panel { display: flex; flex-direction: column; padding: 24px clamp(16px, 4vw, 48px); background: var(--bg); }
+.auth-panel-top { display: flex; justify-content: space-between; align-items: center; min-height: 44px; }
+.auth-mobile-brand { display: none; }
+.auth-form-wrap { width: min(420px, 100%); margin: auto; padding: 32px 0; }
+.auth-form-wrap h1 { margin-top: 8px; }
+.auth-sub { margin: 8px 0 22px; }
+.auth-form label { margin: 0 0 16px; }
+.label-row { display: flex; justify-content: space-between; align-items: baseline; }
+.hint { display: block; margin-top: 6px; font-size: 12px; font-weight: 400; color: var(--text-faint); }
+.field-icon { position: relative; margin-top: 6px; }
+.field-icon > svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
+.field-icon input { margin-top: 0; padding-left: 42px; }
+.field-icon input[type=password], .field-icon input[type=text] { padding-right: 46px; }
+.field-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 0; padding: 8px; background: transparent; color: var(--text-faint); box-shadow: none; }
+.field-toggle:hover { background: var(--surface-muted); box-shadow: none; color: var(--text); }
+.field-toggle:active { transform: translateY(-50%) scale(.95); }
+.text-link { min-height: 0; padding: 0; background: none; box-shadow: none; color: var(--accent-text); font-weight: 600; font-size: 13px; }
+.text-link:hover { background: none; box-shadow: none; text-decoration: underline; }
+.text-link:active { transform: none; }
+.auth-submit { width: 100%; min-height: 3rem; margin-top: 4px; font-size: 1rem; }
+.back-link { margin: 0 0 14px -8px; gap: 6px; font-weight: 600; }
+.setup-callout { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; padding: 12px 14px; border-radius: .8rem; border: 1px dashed var(--border-strong); color: var(--text-muted); font-size: 13px; }
+.setup-callout svg { color: var(--gold-600); }
+.topbar-user { min-height: 2.1rem; padding: 6px 10px; font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-muted); }
+@media (max-width: 860px) {
+  .auth-split { grid-template-columns: 1fr; }
+  .auth-hero { display: none; }
+  .auth-mobile-brand { display: block; }
+  .auth-form-wrap { margin: 24px auto auto; }
+}
+
 /* ─── Owner console ─── */
 .admin { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
