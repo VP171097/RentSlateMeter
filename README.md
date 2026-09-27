@@ -41,7 +41,7 @@ Each meter can have only one open bill (pending or unpaid) at a time. This is en
 
 ```bash
 npm ci
-npm run dev        # http://localhost:5173/DynamicQR/
+npm run dev        # http://localhost:5173/
 npm run lint       # eslint, zero warnings allowed
 npm run typecheck  # tsc -p jsconfig.json
 npm run build
@@ -53,11 +53,11 @@ Optional `.env` overrides: `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KE
 
 - Project: DynamicQR (ap-south-1).
 - Apply the migrations in `supabase/migrations/` in order. `20260928090000_rentslate_meter_fixes.sql` fixes admin bootstrap, RLS recursion and audit-event inserts. It also adds default billing settings for each property and the one-open-bill-per-meter index. `20260928100000_meter_photos.sql` adds the meter photo column and bucket. `20260928110000_owner_login.sql` adds `admin_exists()` for the sign-in page.
-- Under **Authentication → URL Configuration**, set the Site URL and add a Redirect URL for `https://vp171097.github.io/DynamicQR/`. Password-reset and confirmation emails return there.
+- Under **Authentication → URL Configuration**, set the Site URL and add a Redirect URL for `https://vp171097.github.io/RentSlateMeter/`. Password-reset and confirmation emails return there.
 - After the owner account is created, you can turn off **Allow new users to sign up** under Authentication → Sign In / Providers. Other accounts can't access owner data anyway.
 - Deploy the portal function without JWT verification, because tenants have no Supabase account:
   `supabase functions deploy meter-portal --no-verify-jwt`
 
 ## Deployment
 
-GitHub Pages is deployed by `.github/workflows/deploy.yml` (lint → typecheck → build) on every push to `main`. The base path is `/DynamicQR/`.
+GitHub Pages is deployed by `.github/workflows/deploy.yml` (lint → typecheck → build) on every push to `main`. The site is served at https://vp171097.github.io/RentSlateMeter/. Asset paths are relative (`base: './'`), so the site keeps working if the repo is renamed. Meter QR codes encode the page URL, so re-download them after a rename.
