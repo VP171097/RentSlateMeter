@@ -117,18 +117,30 @@ async function downloadStored(b){if(!b.pdf_path)return alert('PDF is not availab
 async function downloadQR(m,format='png'){
  const portal=baseUrl+'#/m/'+m.public_token;
  const data=await QRCode.toDataURL(portal,{width:1200,margin:3,errorCorrectionLevel:'H'});
+ const active=m.tenant_assignments?.find(a=>!a.move_out_date);
+ const tenant=active?.tenants||null;
  if(format==='png'){
   const a=document.createElement('a');a.href=data;a.download=m.meter_code+'-electricity-access.png';a.click();return;
  }
  const {jsPDF}=await import('jspdf');
  const doc=new jsPDF({unit:'mm',format:'a4'});
- doc.setFont('helvetica','bold');doc.setFontSize(22);doc.text('Electricity Bill Manager',105,30,{align:'center'});
- doc.setFont('helvetica','normal');doc.setFontSize(13);doc.text('Permanent Meter Access',105,40,{align:'center'});
- doc.addImage(data,'PNG',55,52,100,100);
- doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Room '+(m.rooms?.room_number||'—'),105,164,{align:'center'});
- doc.setFont('helvetica','normal');doc.setFontSize(12);doc.text('Meter: '+m.meter_code,105,173,{align:'center'});
- doc.text('Scan this code to open the electricity account portal.',105,183,{align:'center',maxWidth:170});
- doc.setFontSize(9);doc.text('This access code remains linked to this meter.',105,194,{align:'center'});
- doc.save(m.meter_code+'-electricity-access.pdf');
+ doc.setFont('helvetica','bold');doc.setFontSize(22);doc.text('Electricity Bill Manager',105,25,{align:'center'});
+ doc.setFont('helvetica','normal');doc.setFontSize(13);doc.text('Permanent Meter Access',105,35,{align:'center'});
+ doc.addImage(data,'PNG',55,45,100,100);
+ doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Meter & Room',20,160);
+ doc.setFont('helvetica','normal');doc.setFontSize(11);
+ doc.text('Room: '+(m.rooms?.room_number||'—'),20,170);
+ doc.text('Floor: '+(m.rooms?.floor||'—'),20,178);
+ doc.text('Meter Code: '+m.meter_code,20,186);
+ doc.text('Meter Number: '+(m.meter_number||'—'),20,194);
+ doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Current Tenant',105,160);
+ doc.setFont('helvetica','normal');doc.setFontSize(11);
+ doc.text('Name: '+(tenant?.name||'Vacant'),105,170);
+ doc.text('Mobile: '+(tenant?.phone||'Not registered'),105,178);
+ doc.text('Notes: '+(tenant?.notes||'—'),105,186,{maxWidth:85});
+ doc.setFontSize(10);doc.text('Scan this code to open the electricity account portal.',105,207,{align:'center',maxWidth:170});
+ doc.text('The access code remains linked to this meter. Tenant details shown are the current owner records.',105,215,{align:'center',maxWidth:175});
+ doc.setFontSize(8);doc.text('Generated: '+new Date().toLocaleDateString('en-IN'),105,224,{align:'center'});
+ doc.save(m.meter_code+'-electricity-access-with-tenant.pdf');
 }
 createRoot(document.getElementById('root')).render(<App/>);
