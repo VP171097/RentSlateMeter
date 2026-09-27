@@ -9,7 +9,7 @@ import {
 import { BrandMark, Info, Modal, StatusPill, ThemeToggle } from './ui';
 
 const OPEN = ['PENDING_APPROVAL', 'APPROVED'];
-const BILL_SELECT = '*,meters(meter_code,meter_number,public_token,rooms(floor,room_number),properties(name,address)),tenants(name,phone),bill_payments(payment_date,amount,payment_mode,receipt_no)';
+const BILL_SELECT = '*,meters(meter_code,meter_number,public_token,rooms(floor,room_number),properties(name,address)),tenants(name,phone,tenant_assignments(meter_id,move_in_date,move_out_date)),bill_payments(payment_date,amount,payment_mode,receipt_no)';
 const PAYMENT_MODES = ['UPI', 'Cash', 'Bank transfer', 'Cheque'];
 
 const fallbackSettings = propertyId => ({ property_id: propertyId, rate_per_unit: DEFAULT_RATE, fixed_charge: 0, tax_percent: 0, due_days: 7 });
@@ -17,6 +17,13 @@ const fallbackSettings = propertyId => ({ property_id: propertyId, rate_per_unit
 function lastPaymentFor(meterId, bills) {
   return bills.filter(b => b.meter_id === meterId).flatMap(b => b.bill_payments || [])
     .sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date)))[0] || null;
+}
+
+/** Move-in date of the bill's tenant on the bill's meter, as saved on the tenant page. */
+function billMoveIn(bill) {
+  const stays = (bill.tenants?.tenant_assignments || []).filter(a => a.meter_id === bill.meter_id)
+    .sort((a, b) => String(b.move_in_date).localeCompare(String(a.move_in_date)));
+  return (stays.find(a => !a.move_out_date) || stays[0])?.move_in_date || null;
 }
 
 async function paidHistory(meterId) {
@@ -199,7 +206,7 @@ function TenantModal({ meter, bills, onClose, onDone }) {
   const [name, setName] = useState(active?.tenants?.name || '');
   const [phone, setPhone] = useState(active?.tenants?.phone || '');
   const [notes, setNotes] = useState(active?.tenants?.notes || '');
-  const [moveIn, setMoveIn] = useState(today());
+  const [moveIn, setMoveIn] = useState(active?.move_in_date || today());
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const openBill = bills.find(b => b.meter_id === meter.id && OPEN.includes(b.status));
@@ -211,8 +218,13 @@ function TenantModal({ meter, bills, onClose, onDone }) {
       const normalized = cleanPhone(phone);
       if (normalized.length < 10) throw Error('Enter a valid registered mobile number (at least 10 digits).');
       if (active) {
+        if (!moveIn) throw Error('Move-in date is required.');
         const { error } = await supabase.from('tenants').update({ name: name.trim(), phone: normalized, notes: notes.trim() || null }).eq('id', active.tenant_id);
         if (error) throw error;
+        if (moveIn !== active.move_in_date) {
+          const { error: e } = await supabase.from('tenant_assignments').update({ move_in_date: moveIn }).eq('id', active.id);
+          if (e) throw e;
+        }
       } else {
         const { data: t, error } = await supabase.from('tenants').insert({ property_id: meter.property_id, name: name.trim(), phone: normalized, notes: notes.trim() || null }).select('id').single();
         if (error) throw error;
@@ -237,7 +249,7 @@ function TenantModal({ meter, bills, onClose, onDone }) {
     <p className="muted">The registered mobile number is what the tenant enters after scanning the meter QR code.</p>
     <label>Tenant name<input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Tenant full name" /></label>
     <label>Registered mobile number<input inputMode="numeric" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="10-digit mobile number" /></label>
-    {!active && <label>Move-in date<input type="date" value={moveIn} onChange={e => setMoveIn(e.target.value)} /></label>}
+    <label>Move-in date<input type="date" value={moveIn} onChange={e => setMoveIn(e.target.value)} /></label>
     <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes" /></label>
     {err && <div className="alert">{err}</div>}
     <div className="actions">
@@ -395,7 +407,7 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
       };
       const bill = { ...row, units: round3(current - previous) };
       const history = [bill, ...(await paidHistory(meter.id))];
-      const ctx = { property: meter.properties, meter: { code: meter.meter_code, number: meter.meter_number }, room: meter.rooms, tenant, history, lastPayment: lastPaymentFor(meter.id, bills), previousDate: lastPaid?.reading_date, dueDays: settings.due_days };
+      const ctx = { property: meter.properties, meter: { code: meter.meter_code, number: meter.meter_number }, room: meter.rooms, tenant, moveInDate: activeAssignment(meter)?.move_in_date, history, lastPayment: lastPaymentFor(meter.id, bills), previousDate: lastPaid?.reading_date, dueDays: settings.due_days };
       const blob = await createBillPdf(bill, ctx, portalUrl(meter.public_token));
       const up = await supabase.storage.from('electricity-bills').upload(path, blob, { contentType: 'application/pdf', upsert: false });
       if (up.error) throw up.error;
@@ -465,7 +477,7 @@ function ApproveModal({ bill, bills, settings, onClose, onDone }) {
       const changes = { current_reading: current, rate_per_unit: r, energy_charge: c.energy, fixed_charge: c.fixed, other_charge: 0, tax_amount: c.tax, total_amount: c.total, status: 'APPROVED', approved_at: new Date().toISOString(), approved_by: user.id };
       const merged = { ...bill, ...changes, units: round3(current - previous) };
       const history = [merged, ...(await paidHistory(bill.meter_id)).filter(h => h.id !== bill.id)];
-      const ctx = { property: bill.meters?.properties, meter: { code: bill.meters?.meter_code, number: bill.meters?.meter_number }, room: bill.meters?.rooms, tenant: bill.tenants, history, lastPayment: lastPaymentFor(bill.meter_id, bills), previousDate: lastPaid?.reading_date, dueDays: settings.due_days };
+      const ctx = { property: bill.meters?.properties, meter: { code: bill.meters?.meter_code, number: bill.meters?.meter_number }, room: bill.meters?.rooms, tenant: bill.tenants, moveInDate: billMoveIn(bill), history, lastPayment: lastPaymentFor(bill.meter_id, bills), previousDate: lastPaid?.reading_date, dueDays: settings.due_days };
       const blob = await createBillPdf(merged, ctx, portalUrl(bill.meters?.public_token));
       const path = bill.property_id + '/' + bill.meter_id + '/' + bill.id + '.pdf';
       const up = await supabase.storage.from('electricity-bills').upload(path, blob, { contentType: 'application/pdf', upsert: true });

@@ -51,7 +51,7 @@ export async function createBillPdf(bill, ctx, portalUrl) {
   };
   const label = (x, y, a, b) => {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED); doc.text(a, x, y);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...INK); doc.text(String(b ?? '—'), x, y + 5, { maxWidth: 58 });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...INK); doc.text(String(b ?? '—'), x, y + 5, { maxWidth: 44 });
   };
   const title = (text, y) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...TEAL_DARK); doc.text(text, left, y); doc.setTextColor(...INK); };
   const table = (x, y, w, rows, headers) => {
@@ -77,19 +77,20 @@ export async function createBillPdf(bill, ctx, portalUrl) {
   // Bill meta strip
   box(left, y, width, 15, true);
   label(16, y + 5, 'Bill No.', bill.bill_number);
-  label(66, y + 5, 'Bill Date', date(bill.bill_date));
-  label(112, y + 5, 'Due Date', ctx.dueDays != null ? date(addDays(bill.bill_date, ctx.dueDays)) : '—');
+  label(62, y + 5, 'Bill Date', date(bill.bill_date));
+  label(110, y + 5, 'Due Date', ctx.dueDays != null ? date(addDays(bill.bill_date, ctx.dueDays)) : '—');
   label(158, y + 5, 'Status', STATUS_LABEL[bill.status] || bill.status);
   y += 20;
 
   // Account block
   box(left, y, width, 32);
   label(16, y + 7, 'Account / Meter', `${ctx.meter?.code || '—'} / ${ctx.meter?.number || '—'}`);
-  label(82, y + 7, 'Tenant', ctx.tenant?.name || 'Vacant');
-  label(144, y + 7, 'Room', ctx.room?.room_number || '—');
-  label(16, y + 21, 'Floor', ctx.room?.floor || '—');
-  label(82, y + 21, 'Unit', 'kWh');
-  label(144, y + 21, 'Reading Date', date(bill.reading_date));
+  label(62, y + 7, 'Tenant', ctx.tenant?.name || 'Vacant');
+  label(110, y + 7, 'Room', ctx.room?.room_number || '—');
+  label(158, y + 7, 'Floor', ctx.room?.floor || '—');
+  label(16, y + 21, 'Move-in Date', ctx.moveInDate ? date(ctx.moveInDate) : '—');
+  label(62, y + 21, 'Reading Date', date(bill.reading_date));
+  label(110, y + 21, 'Unit', 'kWh');
   y += 42;
 
   title('Billing Summary', y);
