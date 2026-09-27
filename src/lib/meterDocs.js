@@ -12,21 +12,18 @@ export async function downloadQR(m, format = 'png') {
     a.href = data; a.download = m.meter_code + '-electricity-access.png'; a.click();
     return;
   }
-  const tenant = activeAssignment(m)?.tenants || null;
+  // Room/meter only — no tenant details — so the printed sticker stays valid
+  // across tenant changes, exactly like the QR code itself.
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   drawLetterhead(doc, { title: m.properties?.name || 'Electricity Account', subtitle: 'Permanent Meter Access', address: m.properties?.address });
-  doc.addImage(data, 'PNG', 55, 45, 100, 100);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...TEAL_DARK); doc.text('Meter & Room', 20, 160); doc.text('Current Tenant', 110, 160);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(28, 26, 22);
-  doc.text('Room: ' + (m.rooms?.room_number || '—'), 20, 170);
-  doc.text('Floor: ' + (m.rooms?.floor || '—'), 20, 178);
-  doc.text('Meter Code: ' + m.meter_code, 20, 186);
-  doc.text('Meter Number: ' + (m.meter_number || '—'), 20, 194);
-  doc.text('Name: ' + (tenant?.name || 'Vacant'), 110, 170);
-  doc.text('Mobile: ' + (tenant?.phone ? 'Registered' : 'Not registered'), 110, 178);
+  doc.addImage(data, 'PNG', 45, 48, 120, 120);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...TEAL_DARK);
+  doc.text('Room ' + (m.rooms?.room_number || '—') + ' · Floor ' + (m.rooms?.floor || '—'), 105, 182, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(28, 26, 22);
+  doc.text('Meter ' + m.meter_code + (m.meter_number ? ' · No. ' + m.meter_number : ''), 105, 191, { align: 'center' });
   doc.setFontSize(10);
-  doc.text('Scan this code and enter the mobile number registered with the owner to open the electricity account.', 105, 210, { align: 'center', maxWidth: 170 });
-  doc.text('The code stays linked to this meter, so it does not change when the tenant changes.', 105, 222, { align: 'center', maxWidth: 170 });
+  doc.text('Scan this code and enter the mobile number registered with the owner to view bills and submit meter readings.', 105, 206, { align: 'center', maxWidth: 170 });
+  doc.text('This code is permanent for this meter. It does not change when the tenant changes.', 105, 218, { align: 'center', maxWidth: 170 });
   drawFooter(doc);
   doc.save(m.meter_code + '-electricity-access.pdf');
 }
