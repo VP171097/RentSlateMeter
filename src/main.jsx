@@ -1,0 +1,25 @@
+import React,{useEffect,useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import QRCode from 'qrcode';
+import './styles.css';
+
+const seed=Array.from({length:8},(_,i)=>({id:String(i+1),code:'M'+String(i+1).padStart(2,'0'),floor:i<2?'Ground':i<5?'1st':i<7?'2nd':'3rd',room:(i<2?'G':i<5?'1':i<7?'2':'3')+String((i%3)+1).padStart(2,'0'),tenant:'',phone:'',status:'Vacant',notes:''}));
+const KEY='dynamic-meter-qr-v1';
+function load(){try{const x=JSON.parse(localStorage.getItem(KEY));return Array.isArray(x)&&x.length?x:seed}catch{return seed}}
+function App(){
+ const [meters,setMeters]=useState(load); const [selected,setSelected]=useState(null);
+ const [view,setView]=useState(location.hash.startsWith('#/m/')?'scan':'admin');
+ useEffect(()=>localStorage.setItem(KEY,JSON.stringify(meters)),[meters]);
+ useEffect(()=>{const f=()=>setView(location.hash.startsWith('#/m/')?'scan':'admin');addEventListener('hashchange',f);return()=>removeEventListener('hashchange',f)},[]);
+ const token=location.hash.split('/')[2]; const meter=view==='scan'?meters.find(m=>m.id===token||m.code===token):null;
+ if(view==='scan') return <Scan meter={meter}/>;
+ return <Admin meters={meters} setMeters={setMeters} selected={selected} setSelected={setSelected}/>;
+}
+function Scan({meter}){if(!meter)return <main className="center"><div className="card"><h1>Meter not found</h1><p>This QR code is not registered.</p></div></main>;
+ return <main className="scan"><div className="brand">Dynamic Meter QR</div><div className="meter-card"><div className="icon">⚡</div><span className={'pill '+(meter.status==='Occupied'?'green':'')}>{meter.status}</span><h1>{meter.code}</h1><p className="muted">Electricity Meter</p><div className="grid"><Info a="Floor" b={meter.floor}/><Info a="Room" b={meter.room}/><Info a="Tenant" b={meter.tenant||'—'}/><Info a="Contact" b={meter.phone||'—'}/></div>{meter.notes&&<div className="notes">{meter.notes}</div>}<p className="muted small">Details are maintained by the property administrator.</p></div></main>}
+function Info({a,b}){return <div className="info"><span>{a}</span><strong>{b}</strong></div>}
+function Admin({meters,setMeters,selected,setSelected}){const save=m=>{setMeters(x=>x.map(v=>v.id===m.id?m:v));setSelected(null)};const base=location.origin+location.pathname;
+ return <main className="admin"><header><div><div className="eyebrow">PROPERTY TOOL</div><h1>Dynamic Meter QR</h1><p className="muted">Permanent QR codes. Change tenant details without reprinting.</p></div><a className="button secondary" href="#/m/1" target="_blank">Preview scan page</a></header><section className="stats"><div><b>{meters.length}</b><span>Meters</span></div><div><b>{meters.filter(m=>m.status==='Occupied').length}</b><span>Occupied</span></div><div><b>{meters.filter(m=>m.status==='Vacant').length}</b><span>Vacant</span></div></section><section className="table-card"><div className="table-head"><h2>Meter registry</h2><span>QR identities are permanent</span></div><div className="table">{meters.map(m=><div className="row" key={m.id}><div><strong>{m.code}</strong><small>Floor {m.floor} · Room {m.room}</small></div><div>{m.tenant||'Vacant'}</div><span className={'pill '+(m.status==='Occupied'?'green':'')}>{m.status}</span><button onClick={()=>setSelected(m)}>Edit</button><button className="icon-btn" onClick={()=>downloadQR(m,base)}>QR</button></div>)}</div></section>{selected&&<Editor meter={selected} onCancel={()=>setSelected(null)} onSave={save}/>}</main>}
+function Editor({meter,onCancel,onSave}){const [m,setM]=useState(meter);const set=(k,v)=>setM({...m,[k]:v});return <div className="modal-backdrop"><div className="modal"><div className="modal-head"><div><h2>Edit {m.code}</h2><p className="muted">The QR identity stays unchanged.</p></div><button onClick={onCancel}>×</button></div><label>Floor<input value={m.floor} onChange={e=>set('floor',e.target.value)}/></label><label>Room number<input value={m.room} onChange={e=>set('room',e.target.value)}/></label><label>Tenant name<input value={m.tenant} onChange={e=>set('tenant',e.target.value)} placeholder="Leave blank if vacant"/></label><label>Contact<input value={m.phone} onChange={e=>set('phone',e.target.value)}/></label><label>Status<select value={m.status} onChange={e=>set('status',e.target.value)}><option>Vacant</option><option>Occupied</option></select></label><label>Notes<textarea value={m.notes} onChange={e=>set('notes',e.target.value)}/></label><div className="actions"><button className="secondary" onClick={onCancel}>Cancel</button><button onClick={()=>onSave(m)}>Save changes</button></div></div></div>}
+async function downloadQR(m,base){const url=base+'#/m/'+m.id;const data=await QRCode.toDataURL(url,{width:900,margin:2,errorCorrectionLevel:'H'});const a=document.createElement('a');a.href=data;a.download=m.code+'-qr.png';a.click()}
+createRoot(document.getElementById('root')).render(<App/>);
