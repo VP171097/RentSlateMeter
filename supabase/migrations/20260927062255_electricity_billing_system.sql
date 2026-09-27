@@ -62,6 +62,11 @@ create table if not exists public.bill_events (
   created_at timestamptz not null default now()
 );
 
+drop policy if exists "public scan active meters" on public.meters;
+drop policy if exists "public scan rooms" on public.rooms;
+drop policy if exists "public scan assignments" on public.tenant_assignments;
+drop policy if exists "public scan tenants" on public.tenants;
+
 alter table public.billing_settings enable row level security;
 alter table public.electricity_bills enable row level security;
 alter table public.bill_payments enable row level security;
