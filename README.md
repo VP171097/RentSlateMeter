@@ -28,6 +28,14 @@ Every bill PDF has a **Pay by UPI** QR code for `rentslate@ptaxis`, with the amo
 
 Each meter can have only one open bill (pending or unpaid) at a time. This is enforced in the database.
 
+## Install as an app
+
+RentSlate Meter is an installable web app (PWA). In Chrome on Android or desktop, tap **Install app** in the top bar, or use the browser menu → **Install app** / **Add to Home screen**. It opens full-screen with its own icon.
+
+- Tenants who install it from their meter's QR link go straight back to that meter when they launch it, and their verified mobile is remembered on that device. Leaving the account (the exit icon) forgets both.
+- A service worker (`public/sw.js`) keeps the app shell available offline. It never caches Supabase or other cross-origin requests, so bills, readings and sign-ins always come from the network.
+- Icons live in `public/icons/`. The maskable versions keep the bolt inside Android's safe zone.
+
 ## Security
 
 - RLS is enabled on every table. Owner reads and writes require an admin (`admin_users`).

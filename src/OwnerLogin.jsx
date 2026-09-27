@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, FileText, Lock, Mail, QrCode, ShieldCheck, UserRound, Zap } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { APP_NAME, TAGLINE } from './lib/format';
-import { BrandMark, ThemeToggle } from './ui';
+import { BrandMark, InstallButton, ThemeToggle } from './ui';
 
 // Password reset / confirmation emails return here (the app root). Add this
 // URL under Supabase → Authentication → URL Configuration → Redirect URLs.
@@ -55,7 +55,7 @@ function AuthLayout({ children }) {
       <p className="auth-hero-foot">{APP_NAME} · {TAGLINE}</p>
     </aside>
     <section className="auth-panel">
-      <div className="auth-panel-top"><span className="auth-mobile-brand"><BrandMark /></span><ThemeToggle /></div>
+      <div className="auth-panel-top"><span className="auth-mobile-brand"><BrandMark /></span><div className="topbar-actions"><InstallButton /><ThemeToggle /></div></div>
       <div className="auth-form-wrap">{children}</div>
       <p className="footer-note">Tenants: scan the QR code on your meter to open your electricity account.</p>
     </section>
