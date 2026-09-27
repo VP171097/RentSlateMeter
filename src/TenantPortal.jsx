@@ -3,11 +3,15 @@ import { Camera, Download, IndianRupee, LogOut, RefreshCw } from 'lucide-react';
 import { EDGE_URL, PUBLIC_KEY } from './lib/supabase';
 import { APP_NAME, DEFAULT_RATE, TAGLINE, UPI_ID, cleanPhone, fmt, kwh, money, upiLink } from './lib/format';
 import { compressPhoto } from './lib/photo';
-import { BrandMark, Info, StatusPill, ThemeToggle } from './ui';
+import { BrandMark, Info, InstallButton, StatusPill, ThemeToggle } from './ui';
+import { forgetMeter, isStandalone, rememberMeter } from './lib/pwa';
 
 const storageKey = token => 'meter_mobile_' + token;
-const readSaved = token => { try { return sessionStorage.getItem(storageKey(token)) || ''; } catch { return ''; } };
-const writeSaved = (token, mobile) => { try { mobile ? sessionStorage.setItem(storageKey(token), mobile) : sessionStorage.removeItem(storageKey(token)); } catch { /* not persisted */ } };
+// In the browser the verified mobile lasts for the tab session; in the
+// installed app it stays on the device so the tenant isn't asked every launch.
+const store = () => (isStandalone() ? localStorage : sessionStorage);
+const readSaved = token => { try { return store().getItem(storageKey(token)) || ''; } catch { return ''; } };
+const writeSaved = (token, mobile) => { try { mobile ? store().setItem(storageKey(token), mobile) : store().removeItem(storageKey(token)); } catch { /* not persisted */ } };
 
 class PortalError extends Error {
   constructor(message, status) { super(message); this.status = status; }
@@ -45,14 +49,14 @@ export default function TenantAccess({ token }) {
     setChecking(true);
     try {
       const data = await portalRequest(token, m);
-      writeSaved(token, m); setInitial(data); setMobile(m);
+      writeSaved(token, m); rememberMeter(token); setInitial(data); setMobile(m);
     } catch (err) { setError(err.message); } finally { setChecking(false); }
   };
 
   if (mobile) return <TenantPortal token={token} mobile={mobile} initial={initial} onSignOut={signOut} />;
 
   return <main className="center access page-fade-in"><div className="auth-shell">
-    <div className="scan-top"><BrandMark /><ThemeToggle /></div>
+    <div className="scan-top"><BrandMark /><div className="topbar-actions"><InstallButton compact /><ThemeToggle /></div></div>
     <form className="card login" onSubmit={verify}>
       <div className="eyebrow">Electricity account</div><h1>Meter access</h1>
       <p className="muted">Enter the mobile number your owner registered for this meter.</p>
@@ -122,7 +126,7 @@ function TenantPortal({ token, mobile, initial, onSignOut }) {
 
   const m = data.meter, t = data.tenant, lp = data.last_payment;
   return <main className="scan page-fade-in"><div className="scan-inner">
-    <div className="scan-top"><BrandMark /><div className="topbar-actions"><ThemeToggle /><button className="ghost" onClick={() => onSignOut('')} title="Leave this account" aria-label="Leave this account"><LogOut size={18} /></button></div></div>
+    <div className="scan-top"><BrandMark /><div className="topbar-actions"><InstallButton compact /><ThemeToggle /><button className="ghost" onClick={() => { forgetMeter(); onSignOut(''); }} title="Leave this account" aria-label="Leave this account"><LogOut size={18} /></button></div></div>
     <section className="portal-card">
       <div className="portal-top"><div><div className="eyebrow">{data.property?.name || 'Electricity account'}</div><h1>{m.code}</h1><p className="muted">Room {data.room?.room_number || '—'} · Floor {data.room?.floor || '—'}</p></div><span className="pill green">Active</span></div>
       <div className="portal-grid">

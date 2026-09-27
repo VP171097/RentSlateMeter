@@ -6,7 +6,7 @@ import { downloadQR, downloadTenantSnapshotPdf, portalUrl } from './lib/meterDoc
 import {
   DEFAULT_RATE, activeAssignment, billNumber, byNewest, calcBill, cleanPhone, fmt, kwh, money, round2, round3, today,
 } from './lib/format';
-import { BrandMark, Info, Modal, StatusPill, ThemeToggle } from './ui';
+import { BrandMark, Info, InstallButton, Modal, StatusPill, ThemeToggle } from './ui';
 import { PasswordInput, friendlyAuthError, validatePassword } from './OwnerLogin';
 
 const OPEN = ['PENDING_APPROVAL', 'APPROVED'];
@@ -102,6 +102,7 @@ export default function OwnerApp() {
   return <main className="admin page-fade-in">
     <header className="topbar"><BrandMark /><div className="topbar-actions">
       <button className="ghost" onClick={load} title="Refresh" aria-label="Refresh"><RefreshCw size={18} /></button>
+      <InstallButton compact />
       <ThemeToggle />
       <button className="ghost" onClick={() => setModal({ type: 'password' })} title="Change password" aria-label="Change password"><KeyRound size={18} /></button>
       {email && <button className="ghost topbar-user hide-sm" onClick={() => setModal({ type: 'name' })} title={'Signed in as ' + email + ' · edit your name'}>{ownerName || email}</button>}

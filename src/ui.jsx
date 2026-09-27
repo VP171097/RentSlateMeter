@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
-import { Monitor, Moon, Sun, X, Zap } from 'lucide-react';
+import { Download, Monitor, Moon, Sun, X, Zap } from 'lucide-react';
 import { APP_NAME, STATUS_LABEL, STATUS_TONE, TAGLINE } from './lib/format';
 import { useTheme } from './lib/theme';
+import { useInstallPrompt } from './lib/pwa';
 
 export function BrandMark({ showTagline = true }) {
   const [first, ...rest] = APP_NAME.split(' ');
@@ -48,4 +49,13 @@ export function Modal({ title, onClose, children, wide = false }) {
       </div>
     </div>
   );
+}
+
+/** "Install app" button — shown only when Chrome offers installation. */
+export function InstallButton({ compact = false }) {
+  const { canInstall, install } = useInstallPrompt();
+  if (!canInstall) return null;
+  return <button type="button" className={compact ? 'ghost' : 'secondary sm'} onClick={install} title="Install RentSlate Meter as an app" aria-label="Install app">
+    <Download size={compact ? 18 : 15} />{!compact && 'Install app'}
+  </button>;
 }
