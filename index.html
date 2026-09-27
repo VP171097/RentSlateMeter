@@ -1,1 +1,29 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><meta name="theme-color" content="#0f172a"/><meta name="description" content="Electricity bill and meter reading management for rental properties"/><title>Electricity Bill Manager</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&amp;family=Playfair+Display:wght@500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <meta name="theme-color" content="#0f766e" />
+    <meta name="description" content="RentSlate Meter — smart electricity billing for rental rooms. Permanent meter QR codes, tenant readings, owner approval and PDF bills." />
+    <title>RentSlate Meter — Smart Electricity Billing</title>
+    <script>
+      // Apply the saved theme (shared with RentSlate) before first paint.
+      try {
+        var p = localStorage.getItem('rrm-theme') || 'system';
+        if (p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
+      } catch (e) {}
+    </script>
+    <style>
+      html { background: #faf7f0; }
+      html.dark { background: #0c0a08; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

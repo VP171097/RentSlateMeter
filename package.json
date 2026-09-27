@@ -1,21 +1,22 @@
 {
-  "name": "dynamic-meter-qr",
+  "name": "rentslate-meter",
   "private": true,
-  "version": "1.1.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext .js,.jsx",
-    "typecheck": "tsc --noEmit --allowJs --checkJs false --jsx react-jsx --moduleResolution bundler --module esnext --target es2022"
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -p jsconfig.json"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.57.4",
     "jspdf": "4.2.1",
     "qrcode": "1.5.4",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "lucide-react": "1.48.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "5.0.4",
@@ -29,5 +30,9 @@
     "@types/react-dom": "19.1.9",
     "@types/qrcode": "1.5.5",
     "globals": "16.4.0"
+  },
+  "description": "RentSlate Meter \u2014 Smart Electricity Billing",
+  "engines": {
+    "node": ">=20.19"
   }
 }
