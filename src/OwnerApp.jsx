@@ -700,10 +700,19 @@ function ConfirmByTyping({ word, value, onChange }) {
 
 function DeleteMeterModal({ meter, onClose, onDone }) {
   const [typed, setTyped] = useState(''), [bills, setBills] = useState(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  const [people, setPeople] = useState(null);
   const tenant = activeAssignment(meter)?.tenants;
   useEffect(() => {
     supabase.from('electricity_bills').select('id,status,pdf_path,reading_photo_path').eq('meter_id', meter.id)
       .then(({ data, error }) => { if (error) setErr(error.message); else setBills(data || []); });
+    // Everyone ever assigned to this meter; those living in another room right now are kept.
+    supabase.from('tenant_assignments').select('tenant_id,tenants(name,phone,tenant_assignments(meter_id,move_out_date))').eq('meter_id', meter.id)
+      .then(({ data, error }) => {
+        if (error) return setErr(error.message);
+        const byId = new Map((data || []).filter(a => a.tenants).map(a => [a.tenant_id, a.tenants]));
+        const list = [...byId.values()].map(t => ({ ...t, keep: (t.tenant_assignments || []).some(x => x.meter_id !== meter.id && !x.move_out_date) }));
+        setPeople({ remove: list.filter(t => !t.keep), keep: list.filter(t => t.keep) });
+      });
   }, [meter.id]);
   const open = (bills || []).filter(b => OPEN.includes(b.status)).length;
 
@@ -736,13 +745,15 @@ function DeleteMeterModal({ meter, onClose, onDone }) {
 
   return <Modal title={'Delete meter ' + meter.meter_code + '?'} onClose={onClose}>
     <p className="muted">Room {meter.rooms?.room_number || '—'} · Floor {meter.rooms?.floor || '—'}{tenant ? ' · Tenant ' + tenant.name : ''}</p>
-    <div className="alert"><b>This cannot be undone.</b> Everything linked to this meter will be deleted: the meter and its permanent QR code, the tenant assignment (and the tenant record if they have no other room), all readings and meter photos, and the room if it becomes empty.
+    <div className="alert"><b>This cannot be undone.</b> Everything linked to this meter will be deleted: the meter and its permanent QR code, tenant details, all readings and meter photos, and the room if it becomes empty.
       {bills === null ? ' Checking bills…' : bills.length ? ` That includes ${bills.length} bill${bills.length === 1 ? '' : 's'} with their payments, PDFs and history.` : ' It has no bills.'}
       {open > 0 && ` ${open} of them ${open === 1 ? 'is' : 'are'} still open.`}</div>
+    {people && people.remove.length > 0 && <div className="download-note"><b>Tenant details that will be deleted:</b> {people.remove.map(t => t.name + (t.phone ? ' (' + t.phone + ')' : '')).join(', ')}</div>}
+    {people && people.keep.length > 0 && <div className="download-note"><b>Kept</b> because they currently live in another room: {people.keep.map(t => t.name).join(', ')}</div>}
     <ConfirmByTyping word={meter.meter_code} value={typed} onChange={setTyped} />
     {err && <div className="alert">{err}</div>}
     <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button>
-      <button className="danger" disabled={busy || bills === null || typed.trim() !== meter.meter_code} onClick={remove}><Trash2 size={16} />{busy ? 'Deleting…' : 'Delete meter'}</button></div>
+      <button className="danger" disabled={busy || bills === null || people === null || typed.trim() !== meter.meter_code} onClick={remove}><Trash2 size={16} />{busy ? 'Deleting…' : 'Delete meter'}</button></div>
   </Modal>;
 }
 
