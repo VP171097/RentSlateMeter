@@ -1,6 +1,6 @@
-# DynamicQR — Electricity Bill Manager
+# Electricity Bill Manager
 
-Standalone QR-based electricity billing for rental rooms/meters.
+Standalone Electricity billing for rental rooms/meters.
 
 ## Core workflow
 
@@ -14,7 +14,7 @@ Each physical meter has a permanent QR code. Scanning it opens the tenant electr
 5. The bill is created as **Pending Approval**.
 6. The tenant can see the submission but cannot download a final PDF until the owner approves it.
 7. After approval, the bill PDF is stored privately and becomes downloadable.
-8. The QR portal shows the latest six approved/paid bills with PDF download links.
+8. The electricity portal shows the latest six approved/paid bills with PDF download links.
 
 ### Owner
 1. Sign in to the owner console.
@@ -24,7 +24,7 @@ Each physical meter has a permanent QR code. Scanning it opens the tenant electr
 5. Edit current reading/rate/fixed charge/tax if required.
 6. Approve the bill and create the final PDF.
 7. Mark approved bills as paid with payment date, amount and payment mode.
-8. Configure the property billing rate and charges.
+8. Configure the property billing electricity rate.
 
 ## Bill design
 
@@ -35,7 +35,7 @@ The generated PDF follows the supplied reference bill's information architecture
 - Standalone Supabase project.
 - RLS enabled on exposed billing tables.
 - Owner changes require an authenticated admin.
-- Tenant QR access is scoped to one permanent opaque meter token.
+- Tenant meter access is scoped to one permanent opaque meter token.
 - Final PDFs are stored in a private Storage bucket.
 - Tenant downloads use short-lived signed URLs.
 - Service-role credentials are used only inside the Edge Function and are never shipped to the browser.
@@ -58,7 +58,7 @@ Main entities:
 Project: DynamicQR
 Region: ap-south-1
 
-The browser uses the Supabase publishable key. Never put a service-role/secret key in GitHub Pages or frontend code.
+The browser uses the Supabase publishable key. Never put a service-role/secret key in GitHub Pages or frontend code. Tenant access uses the owner-registered mobile number only; there is no OTP or password for tenant access.
 
 ## GitHub Pages
 
