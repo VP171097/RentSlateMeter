@@ -10,7 +10,7 @@ const PUBLIC_KEY=import.meta.env.VITE_SUPABASE_ANON_KEY||'sb_publishable_XHkcEEx
 const baseUrl=location.origin+location.pathname;
 const token=location.hash.startsWith('#/m/')?location.hash.split('/')[2]:null;
 const edgeUrl=SUPABASE_URL+'/functions/v1/meter-portal';
-const money=n=>`₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})`;
+const money=n=>'₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt=d=>d?new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'—';
 const cleanPhone=v=>String(v||'').replace(/\D/g,'');
 
