@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Plus, QrCode, RefreshCw, Trash2, UserRound, Zap } from 'lucide-react';
+import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Pencil, Plus, QrCode, RefreshCw, Trash2, UserRound, Zap } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { createBillPdf, downloadBlob } from './lib/billPdf';
 import { downloadQR, downloadTenantSnapshotPdf, portalUrl } from './lib/meterDocs';
@@ -116,7 +116,7 @@ export default function OwnerApp() {
     {msg && <div className="alert">{msg}</div>}
     {busy ? <div className="card"><h2>Loading data…</h2></div>
       : properties.length === 0 ? <SetupCard onAdd={() => setModal({ type: 'property' })} />
-        : tab === 'meters' ? <Dashboard meters={meters} bills={bills} onAdd={() => setModal({ type: 'meter' })} onGenerate={m => setModal({ type: 'generate', meter: m })} onEditTenant={m => setModal({ type: 'tenant', meter: m })} onOpenRoom={m => setModal({ type: 'room', meter: m })} onDelete={m => setModal({ type: 'deleteMeter', meter: m })} />
+        : tab === 'meters' ? <Dashboard meters={meters} bills={bills} onAdd={() => setModal({ type: 'meter' })} onGenerate={m => setModal({ type: 'generate', meter: m })} onEditTenant={m => setModal({ type: 'tenant', meter: m })} onOpenRoom={m => setModal({ type: 'room', meter: m })} onDelete={m => setModal({ type: 'deleteMeter', meter: m })} onEdit={m => setModal({ type: 'editMeter', meter: m })} />
           : tab === 'tenants' ? <TenantManager meters={meters} onEdit={m => setModal({ type: 'tenant', meter: m })} />
             : tab === 'bills' ? <Bills bills={bills} onApprove={b => setModal({ type: 'approve', bill: b })} onPaid={b => setModal({ type: 'pay', bill: b })} onDownload={downloadStored} onError={setMsg} />
               : <PropertySettings properties={properties} meters={meters} settingsFor={settingsFor} onSaved={load} onAdd={() => setModal({ type: 'property' })} onDelete={p => setModal({ type: 'deleteProperty', property: p })} />}
@@ -126,6 +126,7 @@ export default function OwnerApp() {
     {modal?.type === 'deleteProperty' && <DeletePropertyModal property={modal.property} onClose={close} onDone={done} />}
     {modal?.type === 'property' && <PropertyModal onClose={close} onDone={done} />}
     {modal?.type === 'meter' && <MeterModal properties={properties} onClose={close} onDone={done} />}
+    {modal?.type === 'editMeter' && <MeterModal properties={properties} meter={modal.meter} bills={bills} onClose={close} onDone={done} />}
     {modal?.type === 'generate' && <GenerateModal meter={modal.meter} bills={bills} settings={settingsFor(modal.meter.property_id)} onClose={close} onDone={done} />}
     {modal?.type === 'approve' && <ApproveModal bill={modal.bill} bills={bills} settings={settingsFor(modal.bill.property_id)} onClose={close} onDone={done} />}
     {modal?.type === 'pay' && <PayModal bill={modal.bill} onClose={close} onDone={done} />}
@@ -147,7 +148,7 @@ function SetupCard({ onAdd }) {
     <button onClick={onAdd}><Plus size={16} />Add property</button></section>;
 }
 
-function Dashboard({ meters, bills, onAdd, onGenerate, onEditTenant, onOpenRoom, onDelete }) {
+function Dashboard({ meters, bills, onAdd, onGenerate, onEditTenant, onOpenRoom, onDelete, onEdit }) {
   const pending = bills.filter(b => b.status === 'PENDING_APPROVAL').length;
   const due = bills.filter(b => b.status === 'APPROVED').reduce((s, b) => s + Number(b.total_amount || 0), 0);
   return <>
@@ -166,13 +167,15 @@ function Dashboard({ meters, bills, onAdd, onGenerate, onEditTenant, onOpenRoom,
           return <div className="row" key={m.id}>
             <div><button className="link-btn" onClick={() => onOpenRoom(m)} title="Open room details"><strong>{m.meter_code}</strong><small>Floor {m.rooms?.floor || '—'} · Room {m.rooms?.room_number || '—'}</small></button></div>
             <div><strong>{a?.tenants?.name || 'Vacant'}</strong><small>{a?.tenants?.phone || 'No mobile registered'}</small></div>
-            <span className={'pill ' + (a ? 'green' : '')}>{a ? 'Occupied' : 'Vacant'}</span>
+            {m.status !== 'active' ? <span className="pill red">{m.status === 'maintenance' ? 'Maintenance' : 'Inactive'}</span>
+              : <span className={'pill ' + (a ? 'green' : '')}>{a ? 'Occupied' : 'Vacant'}</span>}
             <div className="row-actions">
               <button className="sm" onClick={() => onGenerate(m)}><FileText size={14} />Generate bill</button>
               <button className="secondary sm" onClick={() => onEditTenant(m)}><UserRound size={14} />Tenant</button>
               <button className="secondary sm" onClick={() => onOpenRoom(m)}><ArrowUpRight size={14} />Room</button>
               <button className="secondary sm" onClick={() => downloadQR(m, 'png')}><QrCode size={14} />PNG</button>
               <button className="secondary sm" onClick={() => downloadQR(m, 'pdf')}><QrCode size={14} />PDF</button>
+              <button className="secondary sm" onClick={() => onEdit(m)} title={'Edit meter ' + m.meter_code} aria-label={'Edit meter ' + m.meter_code}><Pencil size={14} /></button>
               <button className="secondary sm danger-outline" onClick={() => onDelete(m)} title={'Delete meter ' + m.meter_code} aria-label={'Delete meter ' + m.meter_code}><Trash2 size={14} /></button>
             </div>
           </div>;
@@ -366,10 +369,36 @@ function PropertyModal({ onClose, onDone }) {
   </Modal>;
 }
 
-function MeterModal({ properties, onClose, onDone }) {
-  const [propertyId, setPropertyId] = useState(properties[0]?.id || '');
-  const [floor, setFloor] = useState(''), [room, setRoom] = useState(''), [code, setCode] = useState(''), [number, setNumber] = useState(''), [opening, setOpening] = useState('0');
+const METER_STATUS = [['active', 'Active'], ['inactive', 'Inactive'], ['maintenance', 'Maintenance']];
+
+/** Add a room + meter, or edit an existing meter when `meter` is given. */
+function MeterModal({ properties, meter = null, bills = [], onClose, onDone }) {
+  const editing = !!meter;
+  const [propertyId, setPropertyId] = useState(meter?.property_id || properties[0]?.id || '');
+  const [floor, setFloor] = useState(meter?.rooms?.floor || ''), [room, setRoom] = useState(meter?.rooms?.room_number || '');
+  const [code, setCode] = useState(meter?.meter_code || ''), [number, setNumber] = useState(meter?.meter_number || '');
+  const [opening, setOpening] = useState(String(meter?.opening_reading ?? 0));
+  const [status, setStatus] = useState(meter?.status || 'active'), [notes, setNotes] = useState(meter?.notes || '');
   const [saving, setSaving] = useState(false), [err, setErr] = useState('');
+  // Once bills exist they were calculated from this baseline, so it can't change.
+  const billCount = editing ? bills.filter(b => b.meter_id === meter.id && b.status !== 'CANCELLED').length : 0;
+  const openingLocked = billCount > 0;
+
+  const findOrCreateRoom = async () => {
+    const { data: r, error } = await supabase.from('rooms').select('id,floor').eq('property_id', propertyId).eq('room_number', room.trim()).maybeSingle();
+    if (error) throw error;
+    if (r) {
+      if (r.floor !== floor.trim()) {
+        const { error: fe } = await supabase.from('rooms').update({ floor: floor.trim() }).eq('id', r.id);
+        if (fe) throw fe;
+      }
+      return r.id;
+    }
+    const { data: created, error: ce } = await supabase.from('rooms').insert({ property_id: propertyId, floor: floor.trim(), room_number: room.trim() }).select('id').single();
+    if (ce) throw ce;
+    return created.id;
+  };
+
   const save = async () => {
     setSaving(true); setErr('');
     try {
@@ -378,25 +407,40 @@ function MeterModal({ properties, onClose, onDone }) {
       if (!code.trim()) throw Error('Meter code is required.');
       const openingReading = Number(opening);
       if (opening === '' || !Number.isFinite(openingReading) || openingReading < 0) throw Error('Opening reading must be a non-negative number.');
-      let { data: r, error } = await supabase.from('rooms').select('id').eq('property_id', propertyId).eq('room_number', room.trim()).maybeSingle();
-      if (error) throw error;
-      if (!r) {
-        ({ data: r, error } = await supabase.from('rooms').insert({ property_id: propertyId, floor: floor.trim(), room_number: room.trim() }).select('id').single());
-        if (error) throw error;
-      }
-      const { error: e } = await supabase.from('meters').insert({ property_id: propertyId, room_id: r.id, meter_code: code.trim(), meter_number: number.trim() || null, opening_reading: openingReading });
+      const roomId = await findOrCreateRoom();
+      const fields = { room_id: roomId, meter_code: code.trim(), meter_number: number.trim() || null, notes: notes.trim() || null, status };
+      if (!openingLocked) fields.opening_reading = openingReading;
+      const { error: e } = editing
+        ? await supabase.from('meters').update(fields).eq('id', meter.id)
+        : await supabase.from('meters').insert({ ...fields, property_id: propertyId });
       if (e) throw Error(e.code === '23505' ? 'That meter code already exists for this property.' : e.message);
+      if (editing && meter.room_id !== roomId) {
+        const active = activeAssignment(meter);
+        if (active) await supabase.from('tenant_assignments').update({ room_id: roomId }).eq('id', active.id);
+        if (meter.room_id) {
+          const { count } = await supabase.from('meters').select('id', { count: 'exact', head: true }).eq('room_id', meter.room_id);
+          if (count === 0) await supabase.from('rooms').delete().eq('id', meter.room_id);
+        }
+      }
       await onDone();
-    } catch (e) { setErr(e.message || 'Could not add meter'); } finally { setSaving(false); }
+    } catch (e) { setErr(e.message || 'Could not save meter'); } finally { setSaving(false); }
   };
-  return <Modal title="Add room & meter" onClose={onClose}>
-    {properties.length > 1 && <label>Property<select value={propertyId} onChange={e => setPropertyId(e.target.value)}>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+
+  return <Modal title={editing ? 'Edit meter · ' + meter.meter_code : 'Add room & meter'} onClose={onClose}>
+    {!editing && properties.length > 1 && <label>Property<select value={propertyId} onChange={e => setPropertyId(e.target.value)}>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    {editing && <p className="muted small">{meter.properties?.name || 'Property'} · the QR code stays the same after editing.</p>}
     <div className="field-row"><label>Floor<input autoFocus value={floor} onChange={e => setFloor(e.target.value)} placeholder="e.g. 1" /></label><label>Room number<input value={room} onChange={e => setRoom(e.target.value)} placeholder="e.g. 101" /></label></div>
     <div className="field-row"><label>Meter code<input value={code} onChange={e => setCode(e.target.value)} placeholder="e.g. M-101" /></label><label>Meter number<input value={number} onChange={e => setNumber(e.target.value)} placeholder="Printed on meter" /></label></div>
-    <label>Opening reading (kWh)<input type="number" min="0" step="0.001" value={opening} onChange={e => setOpening(e.target.value)} /></label>
-    <p className="muted small">The first bill is calculated from this reading. A permanent QR code is created for the meter automatically.</p>
+    <div className="field-row">
+      <label>Opening reading (kWh)<input type="number" min="0" step="0.001" value={opening} disabled={openingLocked} onChange={e => setOpening(e.target.value)} />
+        {openingLocked && <span className="hint">Locked: {billCount} bill{billCount === 1 ? ' was' : 's were'} calculated from it.</span>}</label>
+      {editing && <label>Status<select value={status} onChange={e => setStatus(e.target.value)}>{METER_STATUS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        {status !== 'active' && <span className="hint">Tenants can't open this meter's QR portal until it is active again.</span>}</label>}
+    </div>
+    {editing && <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional, owner-only notes" /></label>}
+    {!editing && <p className="muted small">The first bill is calculated from the opening reading. A permanent QR code is created for the meter automatically.</p>}
     {err && <div className="alert">{err}</div>}
-    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Add meter'}</button></div>
+    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving} onClick={save}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Add meter'}</button></div>
   </Modal>;
 }
 
