@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 
-const money = n => \`₹\${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})\`;
+const money = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})`;
 const date = v => v ? new Date(v).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
 
 export async function createBillPdf(bill, ctx, portalUrl){
@@ -25,13 +25,13 @@ export async function createBillPdf(bill, ctx, portalUrl){
   doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text(ctx.property?.name||'Electricity Bill',left,17);
   doc.setFontSize(8);doc.setFont('helvetica','normal');doc.text('Electricity Bill Cum Notice',left,23);
   doc.text(ctx.property?.address||'',left,28);
-  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text(\`Bill No: \${bill.bill_number}\`,128,17);
-  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text(\`Bill Date: \${date(bill.bill_date)}\`,128,23);
-  doc.text(\`Status: \${bill.status}\`,128,28);
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text(`Bill No: ${bill.bill_number}`,128,17);
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text(`Bill Date: ${date(bill.bill_date)}`,128,23);
+  doc.text(`Status: ${bill.status}`,128,28);
   line(32);
 
   box(left,36,186,40);
-  label(16,43,'Account / Meter',\`\${ctx.meter?.code||'—'} / \${ctx.meter?.number||'—'}\`);
+  label(16,43,'Account / Meter',`${ctx.meter?.code||'—'} / ${ctx.meter?.number||'—'}`);
   label(82,43,'Tenant',ctx.tenant?.name||'Vacant');
   label(144,43,'Room',ctx.room?.room_number||'—');
   label(16,59,'Floor',ctx.room?.floor||'—');
@@ -42,7 +42,7 @@ export async function createBillPdf(bill, ctx, portalUrl){
   table(left,89,130,[
     ['Previous Reading',Number(bill.previous_reading||0).toFixed(3)],
     ['Current Reading',Number(bill.current_reading||0).toFixed(3)],
-    ['Consumption',\`\${Number(bill.units||0).toFixed(3)} units\`],
+    ['Consumption',`${Number(bill.units||0).toFixed(3)} units`],
     ['Rate',money(bill.rate_per_unit)+' / kWh'],
     ['Energy Charges',money(bill.energy_charge)]
   ],['Description','Amount / Value']);
