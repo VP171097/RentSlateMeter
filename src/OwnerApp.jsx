@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Plus, QrCode, RefreshCw, UserRound, Zap } from 'lucide-react';
+import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Pencil, Plus, QrCode, RefreshCw, Trash2, UserRound, Zap } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { createBillPdf, downloadBlob } from './lib/billPdf';
 import { downloadQR, downloadTenantSnapshotPdf, portalUrl } from './lib/meterDocs';
@@ -116,14 +116,17 @@ export default function OwnerApp() {
     {msg && <div className="alert">{msg}</div>}
     {busy ? <div className="card"><h2>Loading data…</h2></div>
       : properties.length === 0 ? <SetupCard onAdd={() => setModal({ type: 'property' })} />
-        : tab === 'meters' ? <Dashboard meters={meters} bills={bills} onAdd={() => setModal({ type: 'meter' })} onGenerate={m => setModal({ type: 'generate', meter: m })} onEditTenant={m => setModal({ type: 'tenant', meter: m })} onOpenRoom={m => setModal({ type: 'room', meter: m })} />
+        : tab === 'meters' ? <Dashboard meters={meters} bills={bills} onAdd={() => setModal({ type: 'meter' })} onGenerate={m => setModal({ type: 'generate', meter: m })} onEditTenant={m => setModal({ type: 'tenant', meter: m })} onOpenRoom={m => setModal({ type: 'room', meter: m })} onDelete={m => setModal({ type: 'deleteMeter', meter: m })} onEdit={m => setModal({ type: 'editMeter', meter: m })} />
           : tab === 'tenants' ? <TenantManager meters={meters} onEdit={m => setModal({ type: 'tenant', meter: m })} />
             : tab === 'bills' ? <Bills bills={bills} onApprove={b => setModal({ type: 'approve', bill: b })} onPaid={b => setModal({ type: 'pay', bill: b })} onDownload={downloadStored} onError={setMsg} />
-              : <PropertySettings properties={properties} settingsFor={settingsFor} onSaved={load} onAdd={() => setModal({ type: 'property' })} />}
+              : <PropertySettings properties={properties} meters={meters} settingsFor={settingsFor} onSaved={load} onAdd={() => setModal({ type: 'property' })} onDelete={p => setModal({ type: 'deleteProperty', property: p })} />}
     {modal?.type === 'name' && <NameModal name={ownerName} email={email} onClose={close} onSaved={n => { setOwnerName(n); close(); }} />}
     {modal?.type === 'password' && <PasswordModal email={email} onClose={close} />}
+    {modal?.type === 'deleteMeter' && <DeleteMeterModal meter={modal.meter} onClose={close} onDone={done} />}
+    {modal?.type === 'deleteProperty' && <DeletePropertyModal property={modal.property} onClose={close} onDone={done} />}
     {modal?.type === 'property' && <PropertyModal onClose={close} onDone={done} />}
     {modal?.type === 'meter' && <MeterModal properties={properties} onClose={close} onDone={done} />}
+    {modal?.type === 'editMeter' && <MeterModal properties={properties} meter={modal.meter} bills={bills} onClose={close} onDone={done} />}
     {modal?.type === 'generate' && <GenerateModal meter={modal.meter} bills={bills} settings={settingsFor(modal.meter.property_id)} onClose={close} onDone={done} />}
     {modal?.type === 'approve' && <ApproveModal bill={modal.bill} bills={bills} settings={settingsFor(modal.bill.property_id)} onClose={close} onDone={done} />}
     {modal?.type === 'pay' && <PayModal bill={modal.bill} onClose={close} onDone={done} />}
@@ -145,7 +148,7 @@ function SetupCard({ onAdd }) {
     <button onClick={onAdd}><Plus size={16} />Add property</button></section>;
 }
 
-function Dashboard({ meters, bills, onAdd, onGenerate, onEditTenant, onOpenRoom }) {
+function Dashboard({ meters, bills, onAdd, onGenerate, onEditTenant, onOpenRoom, onDelete, onEdit }) {
   const pending = bills.filter(b => b.status === 'PENDING_APPROVAL').length;
   const due = bills.filter(b => b.status === 'APPROVED').reduce((s, b) => s + Number(b.total_amount || 0), 0);
   return <>
@@ -164,13 +167,16 @@ function Dashboard({ meters, bills, onAdd, onGenerate, onEditTenant, onOpenRoom 
           return <div className="row" key={m.id}>
             <div><button className="link-btn" onClick={() => onOpenRoom(m)} title="Open room details"><strong>{m.meter_code}</strong><small>Floor {m.rooms?.floor || '—'} · Room {m.rooms?.room_number || '—'}</small></button></div>
             <div><strong>{a?.tenants?.name || 'Vacant'}</strong><small>{a?.tenants?.phone || 'No mobile registered'}</small></div>
-            <span className={'pill ' + (a ? 'green' : '')}>{a ? 'Occupied' : 'Vacant'}</span>
+            {m.status !== 'active' ? <span className="pill red">{m.status === 'maintenance' ? 'Maintenance' : 'Inactive'}</span>
+              : <span className={'pill ' + (a ? 'green' : '')}>{a ? 'Occupied' : 'Vacant'}</span>}
             <div className="row-actions">
               <button className="sm" onClick={() => onGenerate(m)}><FileText size={14} />Generate bill</button>
               <button className="secondary sm" onClick={() => onEditTenant(m)}><UserRound size={14} />Tenant</button>
               <button className="secondary sm" onClick={() => onOpenRoom(m)}><ArrowUpRight size={14} />Room</button>
               <button className="secondary sm" onClick={() => downloadQR(m, 'png')}><QrCode size={14} />PNG</button>
               <button className="secondary sm" onClick={() => downloadQR(m, 'pdf')}><QrCode size={14} />PDF</button>
+              <button className="secondary sm" onClick={() => onEdit(m)} title={'Edit meter ' + m.meter_code} aria-label={'Edit meter ' + m.meter_code}><Pencil size={14} /></button>
+              <button className="secondary sm danger-outline" onClick={() => onDelete(m)} title={'Delete meter ' + m.meter_code} aria-label={'Delete meter ' + m.meter_code}><Trash2 size={14} /></button>
             </div>
           </div>;
         })}
@@ -293,32 +299,46 @@ function Bills({ bills, onApprove, onPaid, onDownload, onError }) {
   </section>;
 }
 
-function PropertySettings({ properties, settingsFor, onSaved, onAdd }) {
+function PropertySettings({ properties, meters, settingsFor, onSaved, onAdd, onDelete }) {
   return <div className="settings-list">
-    {properties.map(p => <RateForm key={p.id} property={p} settings={settingsFor(p.id)} onSaved={onSaved} />)}
+    {properties.map(p => <PropertyForm key={p.id} property={p} meterCount={meters.filter(m => m.property_id === p.id).length} settings={settingsFor(p.id)} onSaved={onSaved} onDelete={() => onDelete(p)} />)}
     <div><button className="secondary" onClick={onAdd}><Plus size={16} />Add property</button></div>
   </div>;
 }
 
-function RateForm({ property, settings, onSaved }) {
+function PropertyForm({ property, meterCount, settings, onSaved, onDelete }) {
+  const [name, setName] = useState(property.name || ''), [address, setAddress] = useState(property.address || '');
   const [rate, setRate] = useState(settings.rate_per_unit ?? DEFAULT_RATE);
   const [dueDays, setDueDays] = useState(settings.due_days ?? 7);
-  const [msg, setMsg] = useState(null);
+  const [msg, setMsg] = useState(null), [saving, setSaving] = useState(false);
+  useEffect(() => { setName(property.name || ''); setAddress(property.address || ''); }, [property]);
   useEffect(() => { setRate(settings.rate_per_unit ?? DEFAULT_RATE); setDueDays(settings.due_days ?? 7); }, [settings]);
   const save = async e => {
-    e.preventDefault();
-    const value = Number(rate), days = Number(dueDays);
+    e.preventDefault(); setMsg(null);
+    const value = Number(rate), days = Number(dueDays), cleanName = name.trim().replace(/\s+/g, ' ');
+    if (!cleanName) return setMsg({ ok: false, text: 'Property name is required. It appears on every PDF.' });
     if (rate === '' || !Number.isFinite(value) || value < 0) return setMsg({ ok: false, text: 'Enter a valid rate.' });
     if (!Number.isInteger(days) || days < 0) return setMsg({ ok: false, text: 'Enter whole days.' });
-    const { error } = await supabase.from('billing_settings').upsert({ property_id: property.id, rate_per_unit: value, due_days: days, fixed_charge: 0, tax_percent: 0, updated_at: new Date().toISOString() }, { onConflict: 'property_id' });
-    if (error) setMsg({ ok: false, text: error.message }); else { setMsg({ ok: true, text: 'Saved.' }); onSaved(); }
+    setSaving(true);
+    const [p, st] = await Promise.all([
+      supabase.from('properties').update({ name: cleanName, address: address.trim() || null }).eq('id', property.id),
+      supabase.from('billing_settings').upsert({ property_id: property.id, rate_per_unit: value, due_days: days, fixed_charge: 0, tax_percent: 0, updated_at: new Date().toISOString() }, { onConflict: 'property_id' }),
+    ]);
+    setSaving(false);
+    const error = p.error || st.error;
+    if (error) setMsg({ ok: false, text: error.message }); else { setMsg({ ok: true, text: 'Saved. New PDFs will show the updated property details.' }); onSaved(); }
   };
   return <form className="card" onSubmit={save}>
-    <div className="eyebrow">Property</div><h2 style={{ margin: '4px 0 2px' }}>{property.name}</h2><p className="muted small">{property.address || 'No address'}</p>
-    <div className="settings-form" style={{ marginTop: 14 }}>
+    <div className="property-head"><div className="eyebrow">Property · {meterCount} meter{meterCount === 1 ? '' : 's'}</div>
+      <button type="button" className="secondary sm danger-outline" onClick={onDelete} disabled={meterCount > 0} title={meterCount > 0 ? 'Delete its meters first' : 'Delete property'}><Trash2 size={14} />Delete</button></div>
+    <div className="field-row">
+      <label>Property name <span className="hint-inline">(shown on all PDFs)</span><input value={name} maxLength={100} onChange={e => setName(e.target.value)} placeholder="e.g. Sai Residency" /></label>
+      <label>Address<input value={address} maxLength={200} onChange={e => setAddress(e.target.value)} placeholder="Shown on bills" /></label>
+    </div>
+    <div className="settings-form">
       <label>Rate per kWh (₹)<input type="number" min="0" step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>
       <label>Due in (days)<input type="number" min="0" step="1" value={dueDays} onChange={e => setDueDays(e.target.value)} /></label>
-      <button>Save</button>
+      <button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
     </div>
     {msg && <div className={msg.ok ? 'success' : 'alert'}>{msg.text}</div>}
   </form>;
@@ -349,10 +369,36 @@ function PropertyModal({ onClose, onDone }) {
   </Modal>;
 }
 
-function MeterModal({ properties, onClose, onDone }) {
-  const [propertyId, setPropertyId] = useState(properties[0]?.id || '');
-  const [floor, setFloor] = useState(''), [room, setRoom] = useState(''), [code, setCode] = useState(''), [number, setNumber] = useState(''), [opening, setOpening] = useState('0');
+const METER_STATUS = [['active', 'Active'], ['inactive', 'Inactive'], ['maintenance', 'Maintenance']];
+
+/** Add a room + meter, or edit an existing meter when `meter` is given. */
+function MeterModal({ properties, meter = null, bills = [], onClose, onDone }) {
+  const editing = !!meter;
+  const [propertyId, setPropertyId] = useState(meter?.property_id || properties[0]?.id || '');
+  const [floor, setFloor] = useState(meter?.rooms?.floor || ''), [room, setRoom] = useState(meter?.rooms?.room_number || '');
+  const [code, setCode] = useState(meter?.meter_code || ''), [number, setNumber] = useState(meter?.meter_number || '');
+  const [opening, setOpening] = useState(String(meter?.opening_reading ?? 0));
+  const [status, setStatus] = useState(meter?.status || 'active'), [notes, setNotes] = useState(meter?.notes || '');
   const [saving, setSaving] = useState(false), [err, setErr] = useState('');
+  // Once bills exist they were calculated from this baseline, so it can't change.
+  const billCount = editing ? bills.filter(b => b.meter_id === meter.id && b.status !== 'CANCELLED').length : 0;
+  const openingLocked = billCount > 0;
+
+  const findOrCreateRoom = async () => {
+    const { data: r, error } = await supabase.from('rooms').select('id,floor').eq('property_id', propertyId).eq('room_number', room.trim()).maybeSingle();
+    if (error) throw error;
+    if (r) {
+      if (r.floor !== floor.trim()) {
+        const { error: fe } = await supabase.from('rooms').update({ floor: floor.trim() }).eq('id', r.id);
+        if (fe) throw fe;
+      }
+      return r.id;
+    }
+    const { data: created, error: ce } = await supabase.from('rooms').insert({ property_id: propertyId, floor: floor.trim(), room_number: room.trim() }).select('id').single();
+    if (ce) throw ce;
+    return created.id;
+  };
+
   const save = async () => {
     setSaving(true); setErr('');
     try {
@@ -361,25 +407,40 @@ function MeterModal({ properties, onClose, onDone }) {
       if (!code.trim()) throw Error('Meter code is required.');
       const openingReading = Number(opening);
       if (opening === '' || !Number.isFinite(openingReading) || openingReading < 0) throw Error('Opening reading must be a non-negative number.');
-      let { data: r, error } = await supabase.from('rooms').select('id').eq('property_id', propertyId).eq('room_number', room.trim()).maybeSingle();
-      if (error) throw error;
-      if (!r) {
-        ({ data: r, error } = await supabase.from('rooms').insert({ property_id: propertyId, floor: floor.trim(), room_number: room.trim() }).select('id').single());
-        if (error) throw error;
-      }
-      const { error: e } = await supabase.from('meters').insert({ property_id: propertyId, room_id: r.id, meter_code: code.trim(), meter_number: number.trim() || null, opening_reading: openingReading });
+      const roomId = await findOrCreateRoom();
+      const fields = { room_id: roomId, meter_code: code.trim(), meter_number: number.trim() || null, notes: notes.trim() || null, status };
+      if (!openingLocked) fields.opening_reading = openingReading;
+      const { error: e } = editing
+        ? await supabase.from('meters').update(fields).eq('id', meter.id)
+        : await supabase.from('meters').insert({ ...fields, property_id: propertyId });
       if (e) throw Error(e.code === '23505' ? 'That meter code already exists for this property.' : e.message);
+      if (editing && meter.room_id !== roomId) {
+        const active = activeAssignment(meter);
+        if (active) await supabase.from('tenant_assignments').update({ room_id: roomId }).eq('id', active.id);
+        if (meter.room_id) {
+          const { count } = await supabase.from('meters').select('id', { count: 'exact', head: true }).eq('room_id', meter.room_id);
+          if (count === 0) await supabase.from('rooms').delete().eq('id', meter.room_id);
+        }
+      }
       await onDone();
-    } catch (e) { setErr(e.message || 'Could not add meter'); } finally { setSaving(false); }
+    } catch (e) { setErr(e.message || 'Could not save meter'); } finally { setSaving(false); }
   };
-  return <Modal title="Add room & meter" onClose={onClose}>
-    {properties.length > 1 && <label>Property<select value={propertyId} onChange={e => setPropertyId(e.target.value)}>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+
+  return <Modal title={editing ? 'Edit meter · ' + meter.meter_code : 'Add room & meter'} onClose={onClose}>
+    {!editing && properties.length > 1 && <label>Property<select value={propertyId} onChange={e => setPropertyId(e.target.value)}>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    {editing && <p className="muted small">{meter.properties?.name || 'Property'} · the QR code stays the same after editing.</p>}
     <div className="field-row"><label>Floor<input autoFocus value={floor} onChange={e => setFloor(e.target.value)} placeholder="e.g. 1" /></label><label>Room number<input value={room} onChange={e => setRoom(e.target.value)} placeholder="e.g. 101" /></label></div>
     <div className="field-row"><label>Meter code<input value={code} onChange={e => setCode(e.target.value)} placeholder="e.g. M-101" /></label><label>Meter number<input value={number} onChange={e => setNumber(e.target.value)} placeholder="Printed on meter" /></label></div>
-    <label>Opening reading (kWh)<input type="number" min="0" step="0.001" value={opening} onChange={e => setOpening(e.target.value)} /></label>
-    <p className="muted small">The first bill is calculated from this reading. A permanent QR code is created for the meter automatically.</p>
+    <div className="field-row">
+      <label>Opening reading (kWh)<input type="number" min="0" step="0.001" value={opening} disabled={openingLocked} onChange={e => setOpening(e.target.value)} />
+        {openingLocked && <span className="hint">Locked: {billCount} bill{billCount === 1 ? ' was' : 's were'} calculated from it.</span>}</label>
+      {editing && <label>Status<select value={status} onChange={e => setStatus(e.target.value)}>{METER_STATUS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        {status !== 'active' && <span className="hint">Tenants can't open this meter's QR portal until it is active again.</span>}</label>}
+    </div>
+    {editing && <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional, owner-only notes" /></label>}
+    {!editing && <p className="muted small">The first bill is calculated from the opening reading. A permanent QR code is created for the meter automatically.</p>}
     {err && <div className="alert">{err}</div>}
-    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Add meter'}</button></div>
+    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving} onClick={save}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Add meter'}</button></div>
   </Modal>;
 }
 
@@ -606,4 +667,73 @@ function NameModal({ name, email, onClose, onSaved }) {
     {err && <div className="alert">{err}</div>}
     <div className="actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button></div>
   </form></Modal>;
+}
+
+function ConfirmByTyping({ word, value, onChange }) {
+  return <label>Type <b className="mono">{word}</b> to confirm<input autoFocus value={value} onChange={e => onChange(e.target.value)} placeholder={word} autoComplete="off" /></label>;
+}
+
+function DeleteMeterModal({ meter, onClose, onDone }) {
+  const [typed, setTyped] = useState(''), [bills, setBills] = useState(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  const tenant = activeAssignment(meter)?.tenants;
+  useEffect(() => {
+    supabase.from('electricity_bills').select('id,status,pdf_path,reading_photo_path').eq('meter_id', meter.id)
+      .then(({ data, error }) => { if (error) setErr(error.message); else setBills(data || []); });
+  }, [meter.id]);
+  const open = (bills || []).filter(b => OPEN.includes(b.status)).length;
+
+  const remove = async () => {
+    setBusy(true); setErr('');
+    try {
+      const { data: stays, error: se } = await supabase.from('tenant_assignments').select('tenant_id').eq('meter_id', meter.id);
+      if (se) throw se;
+      // Bills first (payments and audit events cascade); the meter's FK blocks deletion while bills exist.
+      if (bills.length) {
+        const { error } = await supabase.from('electricity_bills').delete().eq('meter_id', meter.id);
+        if (error) throw error;
+      }
+      const { error: me } = await supabase.from('meters').delete().eq('id', meter.id);
+      if (me) throw me;
+      // Best-effort cleanup: stored files, tenants left with no room, and the now-empty room.
+      const pdfs = bills.map(b => b.pdf_path).filter(Boolean), photos = bills.map(b => b.reading_photo_path).filter(Boolean);
+      if (pdfs.length) await supabase.storage.from('electricity-bills').remove(pdfs);
+      if (photos.length) await supabase.storage.from('meter-photos').remove(photos);
+      for (const id of new Set((stays || []).map(s => s.tenant_id))) {
+        const { count } = await supabase.from('tenant_assignments').select('id', { count: 'exact', head: true }).eq('tenant_id', id);
+        if (count === 0) await supabase.from('tenants').delete().eq('id', id);
+      }
+      if (meter.room_id) {
+        const { count } = await supabase.from('meters').select('id', { count: 'exact', head: true }).eq('room_id', meter.room_id);
+        if (count === 0) await supabase.from('rooms').delete().eq('id', meter.room_id);
+      }
+      await onDone();
+    } catch (e) { setErr(e.message || 'Could not delete the meter'); setBusy(false); }
+  };
+
+  return <Modal title={'Delete meter ' + meter.meter_code + '?'} onClose={onClose}>
+    <p className="muted">Room {meter.rooms?.room_number || '—'} · Floor {meter.rooms?.floor || '—'}{tenant ? ' · Tenant ' + tenant.name : ''}</p>
+    <div className="alert"><b>This cannot be undone.</b> The meter, its permanent QR code and tenant assignment will be removed.
+      {bills === null ? ' Checking bills…' : bills.length ? ` ${bills.length} bill${bills.length === 1 ? '' : 's'} (with payments, PDFs and meter photos) will also be deleted permanently.` : ' It has no bills.'}
+      {open > 0 && ` ${open} of them ${open === 1 ? 'is' : 'are'} still open.`}</div>
+    <ConfirmByTyping word={meter.meter_code} value={typed} onChange={setTyped} />
+    {err && <div className="alert">{err}</div>}
+    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button>
+      <button className="danger" disabled={busy || bills === null || typed.trim() !== meter.meter_code} onClick={remove}><Trash2 size={16} />{busy ? 'Deleting…' : 'Delete meter'}</button></div>
+  </Modal>;
+}
+
+function DeletePropertyModal({ property, onClose, onDone }) {
+  const [typed, setTyped] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  const remove = async () => {
+    setBusy(true); setErr('');
+    const { error } = await supabase.from('properties').delete().eq('id', property.id);
+    if (error) { setErr(error.message); setBusy(false); } else await onDone();
+  };
+  return <Modal title={'Delete ' + property.name + '?'} onClose={onClose}>
+    <div className="alert"><b>This cannot be undone.</b> The property, its rooms, tenant records and billing settings will be removed.</div>
+    <ConfirmByTyping word="DELETE" value={typed} onChange={setTyped} />
+    {err && <div className="alert">{err}</div>}
+    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button>
+      <button className="danger" disabled={busy || typed.trim() !== 'DELETE'} onClick={remove}><Trash2 size={16} />{busy ? 'Deleting…' : 'Delete property'}</button></div>
+  </Modal>;
 }

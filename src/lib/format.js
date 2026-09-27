@@ -1,5 +1,6 @@
 export const APP_NAME = 'RentSlate Meter';
 export const TAGLINE = 'Smart Electricity Billing';
+export const BRAND_PARENT = 'A unit of RentSlate';
 
 export const DEFAULT_RATE = 10;
 
