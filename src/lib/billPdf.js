@@ -35,7 +35,7 @@ export async function createBillPdf(bill, ctx, portalUrl){
   label(82,43,'Tenant',ctx.tenant?.name||'Vacant');
   label(144,43,'Room',ctx.room?.room_number||'—');
   label(16,59,'Floor',ctx.room?.floor||'—');
-  label(82,59,'Meter Type',ctx.meter?.type||'Electricity');
+  label(82,59,'Unit', 'kWh');
   label(144,59,'Reading Date',date(bill.reading_date));
 
   title('Billing Summary',85);
@@ -59,9 +59,6 @@ export async function createBillPdf(bill, ctx, portalUrl){
   title('Calculation Details',163);
   table(left,167,186,[
     ['Energy Charges',money(bill.energy_charge)],
-    ['Fixed Charges',money(bill.fixed_charge)],
-    ['Other Charges',money(bill.other_charge)],
-    ['Tax',money(bill.tax_amount)],
     ['Total Payable',money(bill.total_amount)]
   ],['Charge','Amount']);
 
@@ -74,7 +71,7 @@ export async function createBillPdf(bill, ctx, portalUrl){
 
   title('Last Six Months Consumption',48);
   const six=(ctx.history||[]).slice(0,6).map((b,i)=>[
-    String(i+1),date(b.bill_date).slice(3),Number(b.units||0).toFixed(3),money(b.total_amount),b.status
+    String(i+1),date(b.bill_date).slice(3),Number(b.units||0).toFixed(3)+' kWh',money(b.total_amount),b.status
   ]);
   table(left,52,186,six.length?six:[['—','—','—','—','—']],['#','Bill Month','Units','Amount','Status']);
 
@@ -93,7 +90,7 @@ export async function createBillPdf(bill, ctx, portalUrl){
   title('Important Information',177);
   doc.setFont('helvetica','normal');doc.setFontSize(7);
   const info=[
-    '1. Consumption is calculated as current approved reading minus the last paid reading.',
+    '1. Consumption is calculated in kWh as current approved reading minus the last paid reading.',
     '2. A tenant-submitted bill remains pending until reviewed and approved by the owner.',
     '3. Only approved bills are available for tenant PDF download.',
     '4. Owner-generated bills are finalized immediately according to the configured billing rate and charges.',
