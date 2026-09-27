@@ -74,7 +74,7 @@ export async function downloadTenantSnapshotPdf(m, bills, settings) {
   ['Bill number', 'Date', 'Consumption', 'Amount', 'Status'].forEach((h, i) => doc.text(h, [20, 72, 102, 140, 170][i], y));
   doc.setTextColor(28, 26, 22); y += 7;
   if (!roomBills.length) { doc.setFont('helvetica', 'normal'); doc.text('No bills yet.', 20, y); }
-  roomBills.slice(0, 24).forEach(b => {
+  roomBills.forEach(b => {
     if (y > 275) { doc.addPage(); y = 20; }
     doc.setFont('helvetica', 'normal');
     doc.text(String(b.bill_number || '—'), 20, y); doc.text(fmt(b.bill_date), 72, y); doc.text(Number(b.units || 0).toFixed(2) + ' kWh', 102, y);

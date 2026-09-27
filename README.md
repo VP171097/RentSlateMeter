@@ -18,11 +18,13 @@ Each physical meter has a permanent QR code. Scanning it opens that meter's elec
 1. Sign in to the owner console with email and password. **Forgot password?** sends a reset link, and the key icon in the console changes the password. **Set up owner account** (full name, email, password) appears only until the first owner exists; that account becomes the administrator. Click your name in the console to edit it.
 2. Add properties, then rooms and meters, with an opening reading for each meter. **Bulk add** creates many meters at once: quick-fill a room range (e.g. rooms 101–110 → M-101…M-110), paste rows from Excel or Google Sheets (Floor, Room, Meter code, Meter number, Opening reading), or type them in. Each row is checked before saving, and rooms are created automatically.
 3. Assign tenants with their registered mobile number, or move a tenant out. Bill history is kept.
-4. Generate a bill directly from a meter. It is final and the PDF downloads immediately.
+4. Generate a bill directly from a meter. It is final, and the **Share bill** screen opens right away.
 5. Review tenant readings against the attached meter photo: edit the reading or rate, then **Approve & create PDF**, or **Reject**.
 6. Record payments (amount, date, mode, receipt number) to mark bills paid.
-7. Set the electricity rate (default ₹10/kWh) and due days for each property.
-8. Download the meter QR as a PNG or PDF, and a tenant and room snapshot PDF.
+7. **Share** any approved or paid bill (from Bills, a room's history, or right after generating/approving). It drafts a message starting "Hi, *Tenant Name*" with the bill number, readings, units consumed, amount, due date and UPI ID. You can edit it, then **Share with PDF** opens the phone's share sheet (WhatsApp, SMS, email…) with the PDF attached. There are also WhatsApp (pre-addressed to the tenant), Copy and PDF buttons.
+8. **Room & bills** shows a room's complete bill history (every bill, any number of years), with year filters and totals (units, billed, received, outstanding). Each bill row shows the tenant at the time, readings, payment, and PDF/share/photo buttons. **Export CSV** saves the history as a spreadsheet.
+9. Set the electricity rate (default ₹10/kWh) and due days for each property.
+10. Download the meter QR as a PNG or PDF, and a tenant and room snapshot PDF.
 
 Every bill PDF has a **Pay by UPI** QR code for `rentslate@ptaxis`, with the amount and bill number filled in. The UPI ID is set in `src/lib/format.js`.
 
