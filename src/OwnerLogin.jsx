@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, FileText, Lock, Mail, QrCode, ShieldCheck, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, FileText, Lock, Mail, QrCode, ShieldCheck, UserRound, Zap } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { APP_NAME, TAGLINE } from './lib/format';
 import { BrandMark, ThemeToggle } from './ui';
@@ -64,7 +64,7 @@ function AuthLayout({ children }) {
 
 export default function OwnerLogin({ linkError }) {
   const [mode, setMode] = useState('signin'); // signin | setup | forgot
-  const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [confirm, setConfirm] = useState('');
+  const [name, setName] = useState(''), [email, setEmail] = useState(''), [password, setPassword] = useState(''), [confirm, setConfirm] = useState('');
   const [error, setError] = useState(linkError || ''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [canSetup, setCanSetup] = useState(false);
 
@@ -79,6 +79,7 @@ export default function OwnerLogin({ linkError }) {
     e.preventDefault(); setError(''); setNotice('');
     const addr = email.trim().toLowerCase();
     if (mode === 'setup') {
+      if (name.trim().length < 2) { setError('Enter your full name.'); return; }
       const pwError = validatePassword(password) || (password !== confirm ? 'Passwords do not match.' : null);
       if (pwError) { setError(pwError); return; }
     }
@@ -88,7 +89,7 @@ export default function OwnerLogin({ linkError }) {
         const { error } = await supabase.auth.signInWithPassword({ email: addr, password });
         if (error) throw error;
       } else if (mode === 'setup') {
-        const { data, error } = await supabase.auth.signUp({ email: addr, password, options: { emailRedirectTo: AUTH_REDIRECT } });
+        const { data, error } = await supabase.auth.signUp({ email: addr, password, options: { emailRedirectTo: AUTH_REDIRECT, data: { full_name: name.trim().replace(/\s+/g, ' ') } } });
         if (error) throw error;
         if (!data.session) { switchMode('signin'); setEmail(addr); setNotice('Account created. Check ' + addr + ' for the confirmation link, then sign in.'); }
       } else {
@@ -111,7 +112,8 @@ export default function OwnerLogin({ linkError }) {
     <h1>{titles[mode][0]}</h1>
     <p className="muted auth-sub">{titles[mode][1]}</p>
     <form className="auth-form" onSubmit={submit} noValidate={false}>
-      <label>Email<Field icon={Mail}><input required type="email" autoComplete="email" autoFocus placeholder="owner@example.com" value={email} onChange={e => setEmail(e.target.value)} /></Field></label>
+      {mode === 'setup' && <label>Full name<Field icon={UserRound}><input required autoComplete="name" autoFocus maxLength={80} placeholder="Your full name" value={name} onChange={e => setName(e.target.value)} /></Field></label>}
+      <label>Email<Field icon={Mail}><input required type="email" autoComplete="email" autoFocus={mode !== 'setup'} placeholder="owner@example.com" value={email} onChange={e => setEmail(e.target.value)} /></Field></label>
       {mode !== 'forgot' && <label>
         <span className="label-row">Password{mode === 'signin' && <button type="button" className="text-link" onClick={() => switchMode('forgot')}>Forgot password?</button>}</span>
         <PasswordInput value={password} onChange={setPassword} autoComplete={mode === 'setup' ? 'new-password' : 'current-password'} />

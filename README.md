@@ -15,7 +15,7 @@ Each physical meter has a permanent QR code. Scanning it opens that meter's elec
 6. Download PDFs for the latest six approved or paid bills.
 
 ### Owner
-1. Sign in to the owner console with email and password. **Forgot password?** sends a reset link, and the key icon in the console changes the password. **Set up owner account** appears only until the first owner exists; that account becomes the administrator.
+1. Sign in to the owner console with email and password. **Forgot password?** sends a reset link, and the key icon in the console changes the password. **Set up owner account** (full name, email, password) appears only until the first owner exists; that account becomes the administrator. Click your name in the console to edit it.
 2. Add properties, then rooms and meters, with an opening reading for each meter.
 3. Assign tenants with their registered mobile number, or move a tenant out. Bill history is kept.
 4. Generate a bill directly from a meter. It is final and the PDF downloads immediately.

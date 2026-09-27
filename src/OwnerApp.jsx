@@ -56,8 +56,11 @@ export default function OwnerApp() {
   const [busy, setBusy] = useState(true);
   const [msg, setMsg] = useState('');
   const [email, setEmail] = useState('');
+  const [ownerName, setOwnerName] = useState('');
 
-  useEffect(() => { supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || '')); }, []);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => { setEmail(data.user?.email || ''); setOwnerName(data.user?.user_metadata?.full_name || ''); });
+  }, []);
 
   const load = useCallback(async () => {
     setBusy(true); setMsg('');
@@ -101,10 +104,10 @@ export default function OwnerApp() {
       <button className="ghost" onClick={load} title="Refresh" aria-label="Refresh"><RefreshCw size={18} /></button>
       <ThemeToggle />
       <button className="ghost" onClick={() => setModal({ type: 'password' })} title="Change password" aria-label="Change password"><KeyRound size={18} /></button>
-      {email && <span className="topbar-user hide-sm" title={email}>{email}</span>}
+      {email && <button className="ghost topbar-user hide-sm" onClick={() => setModal({ type: 'name' })} title={'Signed in as ' + email + ' · edit your name'}>{ownerName || email}</button>}
       <button className="secondary sm" onClick={() => supabase.auth.signOut()}><LogOut size={15} /><span className="hide-sm">Sign out</span></button>
     </div></header>
-    <div className="page-head"><div><div className="eyebrow">Owner console</div><h1>Meters, readings &amp; bills.</h1><p className="muted">Approve tenant readings, generate bills and record payments.</p></div>
+    <div className="page-head"><div><div className="eyebrow">Owner console</div><h1>{ownerName ? 'Hello, ' + ownerName.split(' ')[0] + '.' : 'Meters, readings & bills.'}</h1><p className="muted">Approve tenant readings, generate bills and record payments.</p></div>
       {properties.length > 0 && <button onClick={() => setModal({ type: 'meter' })}><Plus size={16} />Add meter</button>}</div>
     <nav className="tabs">
       {[['meters', 'Meters'], ['tenants', 'Tenants'], ['bills', 'Bills'], ['settings', 'Properties & Rates']].map(([k, l]) =>
@@ -117,6 +120,7 @@ export default function OwnerApp() {
           : tab === 'tenants' ? <TenantManager meters={meters} onEdit={m => setModal({ type: 'tenant', meter: m })} />
             : tab === 'bills' ? <Bills bills={bills} onApprove={b => setModal({ type: 'approve', bill: b })} onPaid={b => setModal({ type: 'pay', bill: b })} onDownload={downloadStored} onError={setMsg} />
               : <PropertySettings properties={properties} settingsFor={settingsFor} onSaved={load} onAdd={() => setModal({ type: 'property' })} />}
+    {modal?.type === 'name' && <NameModal name={ownerName} email={email} onClose={close} onSaved={n => { setOwnerName(n); close(); }} />}
     {modal?.type === 'password' && <PasswordModal email={email} onClose={close} />}
     {modal?.type === 'property' && <PropertyModal onClose={close} onDone={done} />}
     {modal?.type === 'meter' && <MeterModal properties={properties} onClose={close} onDone={done} />}
@@ -583,4 +587,23 @@ function PasswordModal({ email, onClose }) {
         <div className="actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button disabled={saving}>{saving ? 'Saving…' : 'Change password'}</button></div>
       </form>}
   </Modal>;
+}
+
+function NameModal({ name, email, onClose, onSaved }) {
+  const [value, setValue] = useState(name), [err, setErr] = useState(''), [saving, setSaving] = useState(false);
+  const save = async e => {
+    e.preventDefault(); setErr('');
+    const clean = value.trim().replace(/\s+/g, ' ');
+    if (clean.length < 2) return setErr('Enter your full name.');
+    setSaving(true);
+    const { error } = await supabase.auth.updateUser({ data: { full_name: clean } });
+    setSaving(false);
+    if (error) setErr(error.message); else onSaved(clean);
+  };
+  return <Modal title="Your profile" onClose={onClose}><form onSubmit={save}>
+    <p className="muted small">Signed in as {email}</p>
+    <label>Full name<input autoFocus maxLength={80} autoComplete="name" value={value} onChange={e => setValue(e.target.value)} placeholder="Your full name" /></label>
+    {err && <div className="alert">{err}</div>}
+    <div className="actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button></div>
+  </form></Modal>;
 }
