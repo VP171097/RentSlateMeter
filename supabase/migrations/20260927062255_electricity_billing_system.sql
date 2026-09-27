@@ -2,7 +2,7 @@ alter table public.meters add column if not exists opening_reading numeric(14,3)
 
 create table if not exists public.billing_settings (
   property_id uuid primary key references public.properties(id) on delete cascade,
-  rate_per_unit numeric(12,2) not null default 8.00,
+  rate_per_unit numeric(12,2) not null default 10.00,
   fixed_charge numeric(12,2) not null default 0,
   tax_percent numeric(6,3) not null default 0,
   due_days integer not null default 7,
