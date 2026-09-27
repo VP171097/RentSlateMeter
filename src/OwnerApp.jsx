@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Pencil, Plus, QrCode, RefreshCw, Rows3, Trash2, UserRound, Zap } from 'lucide-react';
+import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Pencil, Plus, QrCode, RefreshCw, Rows3, Share2, Trash2, UserRound, Zap } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { createBillPdf, downloadBlob } from './lib/billPdf';
 import { downloadQR, downloadTenantSnapshotPdf, portalUrl } from './lib/meterDocs';
@@ -8,6 +8,7 @@ import {
 } from './lib/format';
 import { BrandMark, Info, InstallButton, Modal, StatusPill, ThemeToggle } from './ui';
 import { PasswordInput, friendlyAuthError, validatePassword } from './OwnerLogin';
+import { billMessage, billShareInfo, canShareFiles, canShareText, pdfFile, shareBill, whatsappLink } from './lib/share';
 
 const OPEN = ['PENDING_APPROVAL', 'APPROVED'];
 const BILL_SELECT = '*,meters(meter_code,meter_number,public_token,rooms(floor,room_number),properties(name,address)),tenants(name,phone,tenant_assignments(meter_id,move_in_date,move_out_date)),bill_payments(payment_date,amount,payment_mode,receipt_no)';
@@ -25,6 +26,18 @@ function billMoveIn(bill) {
   const stays = (bill.tenants?.tenant_assignments || []).filter(a => a.meter_id === bill.meter_id)
     .sort((a, b) => String(b.move_in_date).localeCompare(String(a.move_in_date)));
   return (stays.find(a => !a.move_out_date) || stays[0])?.move_in_date || null;
+}
+
+/** Every bill, newest first. PostgREST returns at most 1000 rows per request, so page through. */
+async function fetchAllBills() {
+  const PAGE = 1000, all = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase.from('electricity_bills').select(BILL_SELECT)
+      .order('created_at', { ascending: false }).order('id').range(from, from + PAGE - 1);
+    if (error) return { data: all, error };
+    all.push(...data);
+    if (data.length < PAGE) return { data: all, error: null };
+  }
 }
 
 async function paidHistory(meterId) {
@@ -67,7 +80,7 @@ export default function OwnerApp() {
     const [p, m, b, s] = await Promise.all([
       supabase.from('properties').select('id,name,address').order('created_at'),
       supabase.from('meters').select('id,property_id,room_id,meter_code,meter_number,status,opening_reading,notes,public_token,rooms(floor,room_number),properties(name,address),tenant_assignments(id,tenant_id,move_in_date,move_out_date,tenants(id,name,phone,notes))').order('meter_code'),
-      supabase.from('electricity_bills').select(BILL_SELECT).order('created_at', { ascending: false }).limit(300),
+      fetchAllBills(),
       supabase.from('billing_settings').select('*'),
     ]);
     const err = p.error || m.error || b.error || s.error;
@@ -88,6 +101,9 @@ export default function OwnerApp() {
   const settingsFor = useCallback(id => settingsList.find(s => s.property_id === id) || fallbackSettings(id), [settingsList]);
   const close = useCallback(() => setModal(null), []);
   const done = useCallback(async () => { setModal(null); await load(); }, [load]);
+  // After a bill is generated or approved, go straight to sharing it with the tenant.
+  const billReady = useCallback(async (bill, blob) => { setModal({ type: 'share', bill, blob }); await load(); }, [load]);
+  const share = useCallback(bill => setModal({ type: 'share', bill }), []);
   const pending = bills.filter(b => b.status === 'PENDING_APPROVAL');
 
   if (admin === false) {
@@ -119,7 +135,7 @@ export default function OwnerApp() {
       : properties.length === 0 ? <SetupCard onAdd={() => setModal({ type: 'property' })} />
         : tab === 'meters' ? <Dashboard meters={meters} bills={bills} onAdd={() => setModal({ type: 'meter' })} onBulkAdd={() => setModal({ type: 'bulkMeters' })} onGenerate={m => setModal({ type: 'generate', meter: m })} onEditTenant={m => setModal({ type: 'tenant', meter: m })} onOpenRoom={m => setModal({ type: 'room', meter: m })} onDelete={m => setModal({ type: 'deleteMeter', meter: m })} onEdit={m => setModal({ type: 'editMeter', meter: m })} />
           : tab === 'tenants' ? <TenantManager meters={meters} onEdit={m => setModal({ type: 'tenant', meter: m })} />
-            : tab === 'bills' ? <Bills bills={bills} onApprove={b => setModal({ type: 'approve', bill: b })} onPaid={b => setModal({ type: 'pay', bill: b })} onDownload={downloadStored} onError={setMsg} />
+            : tab === 'bills' ? <Bills bills={bills} onApprove={b => setModal({ type: 'approve', bill: b })} onPaid={b => setModal({ type: 'pay', bill: b })} onDownload={downloadStored} onShare={share} onError={setMsg} />
               : <PropertySettings properties={properties} meters={meters} settingsFor={settingsFor} onSaved={load} onAdd={() => setModal({ type: 'property' })} onDelete={p => setModal({ type: 'deleteProperty', property: p })} />}
     {modal?.type === 'name' && <NameModal name={ownerName} email={email} onClose={close} onSaved={n => { setOwnerName(n); close(); }} />}
     {modal?.type === 'password' && <PasswordModal email={email} onClose={close} />}
@@ -129,11 +145,12 @@ export default function OwnerApp() {
     {modal?.type === 'meter' && <MeterModal properties={properties} onClose={close} onDone={done} />}
     {modal?.type === 'bulkMeters' && <BulkMeterModal properties={properties} meters={meters} onClose={close} onDone={done} />}
     {modal?.type === 'editMeter' && <MeterModal properties={properties} meter={modal.meter} bills={bills} onClose={close} onDone={done} />}
-    {modal?.type === 'generate' && <GenerateModal meter={modal.meter} bills={bills} settings={settingsFor(modal.meter.property_id)} onClose={close} onDone={done} />}
-    {modal?.type === 'approve' && <ApproveModal bill={modal.bill} bills={bills} settings={settingsFor(modal.bill.property_id)} onClose={close} onDone={done} />}
+    {modal?.type === 'generate' && <GenerateModal meter={modal.meter} bills={bills} settings={settingsFor(modal.meter.property_id)} onClose={close} onDone={billReady} />}
+    {modal?.type === 'approve' && <ApproveModal bill={modal.bill} bills={bills} settings={settingsFor(modal.bill.property_id)} onClose={close} onDone={done} onApproved={billReady} />}
+    {modal?.type === 'share' && <ShareBillModal bill={modal.bill} blob={modal.blob} dueDays={settingsFor(modal.bill.property_id).due_days} ownerName={ownerName} onClose={close} />}
     {modal?.type === 'pay' && <PayModal bill={modal.bill} onClose={close} onDone={done} />}
     {modal?.type === 'tenant' && <TenantModal meter={modal.meter} bills={bills} onClose={close} onDone={done} />}
-    {modal?.type === 'room' && <RoomDetailsModal meter={modal.meter} bills={bills} settings={settingsFor(modal.meter.property_id)} onClose={close} />}
+    {modal?.type === 'room' && <RoomDetailsModal meter={modal.meter} bills={bills} settings={settingsFor(modal.meter.property_id)} onClose={close} onShare={share} onError={setMsg} />}
   </main>;
 }
 
@@ -174,7 +191,7 @@ function Dashboard({ meters, bills, onAdd, onBulkAdd, onGenerate, onEditTenant, 
             <div className="row-actions">
               <button className="sm" onClick={() => onGenerate(m)}><FileText size={14} />Generate bill</button>
               <button className="secondary sm" onClick={() => onEditTenant(m)}><UserRound size={14} />Tenant</button>
-              <button className="secondary sm" onClick={() => onOpenRoom(m)}><ArrowUpRight size={14} />Room</button>
+              <button className="secondary sm" onClick={() => onOpenRoom(m)}><ArrowUpRight size={14} />Room &amp; bills</button>
               <button className="secondary sm" onClick={() => downloadQR(m, 'png')}><QrCode size={14} />PNG</button>
               <button className="secondary sm" onClick={() => downloadQR(m, 'pdf')}><QrCode size={14} />PDF</button>
               <button className="secondary sm" onClick={() => onEdit(m)} title={'Edit meter ' + m.meter_code} aria-label={'Edit meter ' + m.meter_code}><Pencil size={14} /></button>
@@ -186,12 +203,12 @@ function Dashboard({ meters, bills, onAdd, onBulkAdd, onGenerate, onEditTenant, 
   </>;
 }
 
-function RoomDetailsModal({ meter, bills, settings, onClose }) {
+function RoomDetailsModal({ meter, bills, settings, onClose, onShare, onError }) {
   const active = activeAssignment(meter), tenant = active?.tenants || null;
   const lastPaid = bills.filter(b => b.meter_id === meter.id).sort(byNewest).find(b => b.status === 'PAID');
   const lp = lastPaymentFor(meter.id, bills);
   const snapshot = () => downloadTenantSnapshotPdf(meter, bills, settings);
-  return <Modal wide title={'Room ' + (meter.rooms?.room_number || '—') + ' · ' + meter.meter_code} onClose={onClose}>
+  return <Modal xwide title={'Room ' + (meter.rooms?.room_number || '—') + ' · ' + meter.meter_code} onClose={onClose}>
     <div className="room-detail-head"><div><div className="eyebrow">Current room snapshot</div><h3>{tenant?.name || 'Vacant'}</h3><p className="muted">{meter.properties?.name || 'Property'} · Floor {meter.rooms?.floor || '—'} · Room {meter.rooms?.room_number || '—'}</p></div>
       <button className="secondary" title="Download tenant data PDF" aria-label="Download tenant data PDF" onClick={snapshot}><Download size={18} /></button></div>
     <div className="portal-grid">
@@ -201,6 +218,7 @@ function RoomDetailsModal({ meter, bills, settings, onClose }) {
       <Info a="Rate" b={money(settings.rate_per_unit) + ' / kWh'} /><Info a="Last paid reading" b={kwh(lastPaid ? lastPaid.current_reading : meter.opening_reading)} />
       <Info a="Last payment" b={lp ? money(lp.amount) : '—'} /><Info a="Last payment date" b={lp ? fmt(lp.payment_date) : '—'} />
     </div>
+    <RoomHistory meter={meter} bills={bills} onShare={onShare} onError={onError} />
     <div className="download-note">The tenant data PDF is a snapshot of this room exactly as it is now, with the permanent meter QR code on the final page. Portal link: <span className="mono">{portalUrl(meter.public_token)}</span></div>
     <div className="actions"><button className="secondary" onClick={onClose}>Close</button><button onClick={snapshot}><Download size={16} />Download tenant data PDF</button></div>
   </Modal>;
@@ -280,7 +298,7 @@ function TenantModal({ meter, bills, onClose, onDone }) {
   </Modal>;
 }
 
-function Bills({ bills, onApprove, onPaid, onDownload, onError }) {
+function Bills({ bills, onApprove, onPaid, onDownload, onShare, onError }) {
   const [filter, setFilter] = useState('ALL');
   const shown = filter === 'ALL' ? bills : bills.filter(b => b.status === filter);
   const filters = [['ALL', 'All'], ['PENDING_APPROVAL', 'Pending'], ['APPROVED', 'Awaiting payment'], ['PAID', 'Paid'], ['CANCELLED', 'Rejected']];
@@ -289,12 +307,13 @@ function Bills({ bills, onApprove, onPaid, onDownload, onError }) {
     {shown.length === 0 ? <div className="empty">No bills here yet.</div> : <div className="bill-list">{shown.map(b =>
       <div className="bill-card" key={b.id}>
         <div><strong>{b.bill_number}</strong><small>{b.meters?.meter_code || '—'} · {b.tenants?.name || 'Vacant'} · {fmt(b.bill_date)} · {b.source === 'TENANT' ? 'Tenant reading' : 'Owner'}</small></div>
-        <div><span className="amount">{money(b.total_amount)}</span><small>{Number(b.units || 0).toFixed(2)} kWh</small></div>
+        <div><span className="amount">{money(b.total_amount)}</span><small>{Number(b.units || 0).toFixed(2)} kWh{Number(b.rent_amount) > 0 ? ' · incl. rent ' + money(b.rent_amount) : ''}</small></div>
         <StatusPill status={b.status} />
         <div className="row-actions">
           {b.status === 'PENDING_APPROVAL' && <button className="sm" onClick={() => onApprove(b)}>Review</button>}
           {b.reading_photo_path && b.status !== 'PENDING_APPROVAL' && <button className="secondary sm" onClick={() => openPhoto(b, onError)}><Camera size={14} />Photo</button>}
           {(b.status === 'APPROVED' || b.status === 'PAID') && <button className="secondary sm" onClick={() => onDownload(b, onError)}><Download size={14} />PDF</button>}
+          {(b.status === 'APPROVED' || b.status === 'PAID') && <button className="secondary sm" onClick={() => onShare(b)}><Share2 size={14} />Share</button>}
           {b.status === 'APPROVED' && <button className="sm" onClick={() => onPaid(b)}>Mark paid</button>}
         </div>
       </div>)}</div>}
@@ -471,15 +490,45 @@ function MeterModal({ properties, meter = null, bills = [], onClose, onDone }) {
   </Modal>;
 }
 
-function BillPreview({ previous, reading, rate, settings }) {
+const monthLabel = (d = new Date()) => d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+const lastRentFor = (meterId, bills) => bills.filter(b => b.meter_id === meterId && Number(b.rent_amount) > 0).sort(byNewest)[0]?.rent_amount;
+const RENT_MIGRATION_HINT = 'Run the latest SQL migration (bill rent) in Supabase first, then try again.';
+const rentError = e => (/rent_(amount|period)/.test(e?.message || '') ? Error(RENT_MIGRATION_HINT) : e);
+
+/** Validated rent to add to a bill: 0 when not added. */
+function rentValue(on, amount, period) {
+  if (!on) return { rent: 0, period: null };
+  const v = Number(amount);
+  if (amount === '' || !Number.isFinite(v) || v <= 0) throw Error('Enter the rent amount, or switch off "Add rent".');
+  return { rent: round2(v), period: period.trim() || null };
+}
+
+function RentFields({ on, setOn, amount, setAmount, period, setPeriod }) {
+  return <div className={'rent-box' + (on ? ' on' : '')}>
+    <label className="switch-row"><input type="checkbox" checked={on} onChange={e => setOn(e.target.checked)} /><span><b>Add rent to this bill</b><small>Optional. Rent appears on the bill only when added.</small></span></label>
+    {on && <div className="field-row">
+      <label>Rent amount (₹)<input type="number" min="0" step="1" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 8000" autoFocus /></label>
+      <label>Rent for<input value={period} maxLength={40} onChange={e => setPeriod(e.target.value)} placeholder="e.g. October 2026" /></label>
+    </div>}
+  </div>;
+}
+
+function BillPreview({ previous, reading, rate, settings, rent = 0 }) {
   const current = Number(reading);
   if (reading === '' || !Number.isFinite(current) || current < previous) return null;
   const c = calcBill(current - previous, rate, settings.fixed_charge, settings.tax_percent);
-  return <div className="preview-total"><span>{(current - previous).toFixed(3)} kWh × {money(rate)}</span><span className="amount">{money(c.total)}</span></div>;
+  const r = Number(rent) > 0 ? round2(rent) : 0;
+  if (!r) return <div className="preview-total"><span>{(current - previous).toFixed(3)} kWh × {money(rate)}</span><span className="amount">{money(c.total)}</span></div>;
+  return <div className="preview-total stacked">
+    <span className="line"><span>Electricity · {(current - previous).toFixed(3)} kWh × {money(rate)}</span><span>{money(c.total)}</span></span>
+    <span className="line"><span>Rent</span><span>{money(r)}</span></span>
+    <span className="line total"><span>Total</span><span className="amount">{money(c.total + r)}</span></span>
+  </div>;
 }
 
 function GenerateModal({ meter, bills, settings, onClose, onDone }) {
   const [reading, setReading] = useState(''), [notes, setNotes] = useState(''), [saving, setSaving] = useState(false), [err, setErr] = useState('');
+  const [rentOn, setRentOn] = useState(false), [rentAmount, setRentAmount] = useState(() => String(lastRentFor(meter.id, bills) ?? '')), [rentPeriod, setRentPeriod] = useState(() => monthLabel());
   const meterBills = useMemo(() => bills.filter(b => b.meter_id === meter.id).sort(byNewest), [bills, meter.id]);
   const lastPaid = meterBills.find(b => b.status === 'PAID');
   const openBill = meterBills.find(b => OPEN.includes(b.status));
@@ -498,11 +547,14 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
       const user = await currentUser();
       const tenant = activeAssignment(meter)?.tenants || null;
       const c = calcBill(current - previous, rate, settings.fixed_charge, settings.tax_percent);
+      const { rent, period } = rentValue(rentOn, rentAmount, rentPeriod);
       const d = today(), id = crypto.randomUUID(), path = meter.property_id + '/' + meter.id + '/' + id + '.pdf';
       const row = {
         id, property_id: meter.property_id, meter_id: meter.id, tenant_id: tenant?.id || null, bill_number: billNumber(), bill_date: d, reading_date: d,
         previous_reading: previous, current_reading: current, rate_per_unit: rate, energy_charge: c.energy, fixed_charge: c.fixed, other_charge: 0,
-        tax_amount: c.tax, total_amount: c.total, status: 'APPROVED', source: 'OWNER', approved_at: new Date().toISOString(), approved_by: user.id, notes: notes.trim() || null,
+        tax_amount: c.tax, total_amount: round2(c.total + rent), status: 'APPROVED', source: 'OWNER', approved_at: new Date().toISOString(), approved_by: user.id, notes: notes.trim() || null,
+        // Rent columns are only sent when rent is added (bills without rent work even before the rent migration).
+        ...(rent > 0 ? { rent_amount: rent, rent_period: period } : {}),
       };
       const bill = { ...row, units: round3(current - previous) };
       const history = [bill, ...(await paidHistory(meter.id))];
@@ -512,11 +564,10 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
       if (up.error) throw up.error;
       uploaded = path;
       const { error } = await supabase.from('electricity_bills').insert({ ...row, pdf_path: path });
-      if (error) throw error;
+      if (error) throw rentError(error);
       uploaded = null;
       await logEvent(id, 'OWNER_GENERATED', user.id, { current_reading: current, rate_per_unit: rate, total_amount: c.total });
-      downloadBlob(blob, bill.bill_number + '.pdf');
-      await onDone();
+      await onDone({ ...bill, pdf_path: path, meters: { meter_code: meter.meter_code, meter_number: meter.meter_number, public_token: meter.public_token, rooms: meter.rooms, properties: meter.properties }, tenants: tenant ? { name: tenant.name, phone: tenant.phone } : null, bill_payments: [] }, blob);
     } catch (e) {
       if (uploaded) await supabase.storage.from('electricity-bills').remove([uploaded]);
       setErr(e.message || 'Could not generate bill');
@@ -527,11 +578,12 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
     <div className="mini-summary"><span>Last paid reading<b>{kwh(previous)}</b></span><span>Rate<b>{money(rate)} / kWh</b></span></div>
     {openBill && <div className="alert">Bill {openBill.bill_number} is still {openBill.status === 'PENDING_APPROVAL' ? 'waiting for approval' : 'unpaid'}. Settle it before generating a new one.</div>}
     <label>Current kWh reading<input autoFocus type="number" min={previous} step="0.001" value={reading} onChange={e => setReading(e.target.value)} placeholder="Enter current kWh reading" /></label>
-    <BillPreview previous={previous} reading={reading} rate={rate} settings={settings} />
+    <RentFields on={rentOn} setOn={setRentOn} amount={rentAmount} setAmount={setRentAmount} period={rentPeriod} setPeriod={setRentPeriod} />
+    <BillPreview previous={previous} reading={reading} rate={rate} settings={settings} rent={rentOn ? Number(rentAmount) || 0 : 0} />
     <label>Note on bill (optional)<textarea value={notes} onChange={e => setNotes(e.target.value)} /></label>
-    <p className="muted small">The bill date is today. Owner-generated bills are final and the PDF downloads immediately.</p>
+    <p className="muted small">The bill date is today. Owner-generated bills are final. Next you can share the bill (message + PDF) with the tenant, or download it.</p>
     {err && <div className="alert">{err}</div>}
-    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving || !!openBill} onClick={save}>{saving ? 'Generating…' : 'Generate & download'}</button></div>
+    <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving || !!openBill} onClick={save}>{saving ? 'Generating…' : 'Generate bill'}</button></div>
   </Modal>;
 }
 
@@ -558,12 +610,15 @@ async function openPhoto(b, onError) {
   window.open(data.signedUrl, '_blank', 'noopener');
 }
 
-function ApproveModal({ bill, bills, settings, onClose, onDone }) {
+function ApproveModal({ bill, bills, settings, onClose, onDone, onApproved }) {
   const [reading, setReading] = useState(String(bill.current_reading));
   const [rate, setRate] = useState(String(bill.rate_per_unit ?? settings.rate_per_unit ?? DEFAULT_RATE));
   const [saving, setSaving] = useState(false), [err, setErr] = useState('');
   const previous = Number(bill.previous_reading);
   const lastPaid = bills.filter(b => b.meter_id === bill.meter_id && b.status === 'PAID').sort(byNewest)[0];
+  const [rentOn, setRentOn] = useState(Number(bill.rent_amount) > 0);
+  const [rentAmount, setRentAmount] = useState(() => String(Number(bill.rent_amount) > 0 ? bill.rent_amount : lastRentFor(bill.meter_id, bills) ?? ''));
+  const [rentPeriod, setRentPeriod] = useState(() => bill.rent_period || monthLabel(new Date(bill.bill_date)));
 
   const approve = async () => {
     setSaving(true); setErr('');
@@ -573,7 +628,9 @@ function ApproveModal({ bill, bills, settings, onClose, onDone }) {
       if (rate === '' || !Number.isFinite(r) || r < 0) throw Error('Enter a valid rate.');
       const user = await currentUser();
       const c = calcBill(current - previous, r, settings.fixed_charge, settings.tax_percent);
-      const changes = { current_reading: current, rate_per_unit: r, energy_charge: c.energy, fixed_charge: c.fixed, other_charge: 0, tax_amount: c.tax, total_amount: c.total, status: 'APPROVED', approved_at: new Date().toISOString(), approved_by: user.id };
+      const { rent, period } = rentValue(rentOn, rentAmount, rentPeriod);
+      const changes = { current_reading: current, rate_per_unit: r, energy_charge: c.energy, fixed_charge: c.fixed, other_charge: 0, tax_amount: c.tax, total_amount: round2(c.total + rent), status: 'APPROVED', approved_at: new Date().toISOString(), approved_by: user.id,
+        ...(rent > 0 || Number(bill.rent_amount) > 0 ? { rent_amount: rent, rent_period: rent > 0 ? period : null } : {}) };
       const merged = { ...bill, ...changes, units: round3(current - previous) };
       const history = [merged, ...(await paidHistory(bill.meter_id)).filter(h => h.id !== bill.id)];
       const ctx = { property: bill.meters?.properties, meter: { code: bill.meters?.meter_code, number: bill.meters?.meter_number }, room: bill.meters?.rooms, tenant: bill.tenants, moveInDate: billMoveIn(bill), history, lastPayment: lastPaymentFor(bill.meter_id, bills), previousDate: lastPaid?.reading_date, dueDays: settings.due_days };
@@ -582,10 +639,10 @@ function ApproveModal({ bill, bills, settings, onClose, onDone }) {
       const up = await supabase.storage.from('electricity-bills').upload(path, blob, { contentType: 'application/pdf', upsert: true });
       if (up.error) throw up.error;
       const { data, error } = await supabase.from('electricity_bills').update({ ...changes, pdf_path: path }).eq('id', bill.id).eq('status', 'PENDING_APPROVAL').select('id');
-      if (error) throw error;
+      if (error) throw rentError(error);
       if (!data?.length) throw Error('This bill was already processed. Refresh to see its current status.');
       await logEvent(bill.id, 'OWNER_APPROVED', user.id, { current_reading: current, rate_per_unit: r, total_amount: c.total });
-      await onDone();
+      await onApproved({ ...merged, pdf_path: path }, blob);
     } catch (e) { setErr(e.message || 'Approval failed'); } finally { setSaving(false); }
   };
 
@@ -609,7 +666,8 @@ function ApproveModal({ bill, bills, settings, onClose, onDone }) {
     {bill.notes && <div className="download-note">Tenant note: {bill.notes}</div>}
     <label>Current kWh reading<input type="number" min={previous} step="0.001" value={reading} onChange={e => setReading(e.target.value)} /></label>
     <label>Rate per kWh (₹)<input type="number" min={0} step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>
-    <BillPreview previous={previous} reading={reading} rate={Number(rate)} settings={settings} />
+    <RentFields on={rentOn} setOn={setRentOn} amount={rentAmount} setAmount={setRentAmount} period={rentPeriod} setPeriod={setRentPeriod} />
+    <BillPreview previous={previous} reading={reading} rate={Number(rate)} settings={settings} rent={rentOn ? Number(rentAmount) || 0 : 0} />
     {err && <div className="alert">{err}</div>}
     <div className="actions"><button className="danger" disabled={saving} onClick={reject}>Reject</button><span className="spacer" /><button className="secondary" onClick={onClose}>Cancel</button><button disabled={saving} onClick={approve}>{saving ? 'Working…' : 'Approve & create PDF'}</button></div>
   </Modal>;
@@ -906,5 +964,121 @@ function BulkMeterModal({ properties, meters, onClose, onDone }) {
     {err && <div className="alert">{err}</div>}
     <div className="actions"><button className="secondary" onClick={onClose}>Cancel</button>
       <button disabled={saving || !filled.length || invalid > 0} onClick={save}>{saving ? 'Adding…' : `Add ${filled.length || ''} meter${filled.length === 1 ? '' : 's'}`}</button></div>
+  </Modal>;
+}
+
+function RoomHistory({ meter, bills, onShare, onError }) {
+  const all = useMemo(() => bills.filter(b => b.meter_id === meter.id).sort(byNewest), [bills, meter.id]);
+  const years = useMemo(() => [...new Set(all.map(b => String(b.bill_date).slice(0, 4)))].sort().reverse(), [all]);
+  const [year, setYear] = useState('ALL');
+  const [showRejected, setShowRejected] = useState(false);
+  const shown = all.filter(b => (year === 'ALL' || String(b.bill_date).startsWith(year)) && (showRejected || b.status !== 'CANCELLED'));
+  const billed = shown.filter(b => b.status === 'APPROVED' || b.status === 'PAID');
+  const sum = (list, f) => list.reduce((t, x) => t + Number(f(x) || 0), 0);
+  const totals = {
+    units: sum(billed, b => b.units), amount: sum(billed, b => b.total_amount),
+    paid: sum(billed.flatMap(b => b.bill_payments || []), p => p.amount),
+    due: sum(billed.filter(b => b.status === 'APPROVED'), b => b.total_amount),
+  };
+  const groups = year === 'ALL' ? years.map(y => [y, shown.filter(b => String(b.bill_date).startsWith(y))]).filter(([, l]) => l.length) : [[year, shown]];
+  const rejectedCount = all.filter(b => b.status === 'CANCELLED').length;
+
+  const exportCsv = () => {
+    const head = ['Bill date', 'Bill no', 'Tenant', 'Previous reading', 'Current reading', 'Units (kWh)', 'Rate', 'Electricity', 'Rent', 'Rent for', 'Total', 'Status', 'Paid on', 'Paid amount', 'Payment mode', 'Source'];
+    const esc = v => { const t = String(v ?? ''); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    const rows = shown.map(b => { const p = (b.bill_payments || [])[0]; return [b.bill_date, b.bill_number, b.tenants?.name || '', b.previous_reading, b.current_reading, b.units, b.rate_per_unit, round2(Number(b.total_amount) - Number(b.rent_amount || 0)), Number(b.rent_amount || 0) || '', b.rent_period || '', b.total_amount, b.status, p?.payment_date || '', p?.amount || '', p?.payment_mode || '', b.source]; });
+    const csv = [head, ...rows].map(r => r.map(esc).join(',')).join('\n');
+    downloadBlob(new Blob([csv], { type: 'text/csv' }), meter.meter_code + '-bill-history' + (year === 'ALL' ? '' : '-' + year) + '.csv');
+  };
+
+  return <section className="history-block">
+    <div className="history-head"><div><div className="eyebrow">Complete bill history</div>
+      <p className="muted small">{all.length ? `${all.length} bill${all.length === 1 ? '' : 's'} since ${fmt(all[all.length - 1].bill_date)}` : 'No bills yet for this room.'}</p></div>
+      {shown.length > 0 && <button className="secondary sm" onClick={exportCsv}><Download size={14} />Export CSV</button>}</div>
+    {all.length > 0 && <>
+      <div className="filters">
+        {['ALL', ...years].map(y => <button key={y} className={'secondary sm' + (year === y ? ' active' : '')} onClick={() => setYear(y)}>{y === 'ALL' ? 'All years' : y}</button>)}
+        {rejectedCount > 0 && <button className={'secondary sm' + (showRejected ? ' active' : '')} onClick={() => setShowRejected(!showRejected)}>{showRejected ? 'Hide' : 'Show'} rejected ({rejectedCount})</button>}
+      </div>
+      <div className="history-totals">
+        <Info a="Units billed" b={kwh(totals.units)} /><Info a="Amount billed" b={money(totals.amount)} />
+        <Info a="Received" b={money(totals.paid)} /><Info a="Outstanding" b={money(totals.due)} />
+      </div>
+      <div className="history-table-wrap"><table className="history-table">
+        <thead><tr><th>Date</th><th>Bill</th><th>Tenant</th><th>Reading (kWh)</th><th>Units</th><th>Amount</th><th>Status</th><th>Payment</th><th aria-label="Actions" /></tr></thead>
+        <tbody>{groups.map(([y, list]) => <Fragment key={y}>
+          {year === 'ALL' && <tr className="year-row"><td colSpan={9}><b>{y}</b> · {list.length} bill{list.length === 1 ? '' : 's'} · {sum(list.filter(b => b.status !== 'CANCELLED'), b => b.units).toFixed(1)} kWh · {money(sum(list.filter(b => b.status === 'APPROVED' || b.status === 'PAID'), b => b.total_amount))}</td></tr>}
+          {list.map(b => { const p = (b.bill_payments || [])[0], final = b.status === 'APPROVED' || b.status === 'PAID'; return <tr key={b.id}>
+            <td className="nowrap">{fmt(b.bill_date)}</td>
+            <td className="mono small nowrap">{b.bill_number}<div className="muted">{b.source === 'TENANT' ? 'Tenant reading' : 'Owner'}</div></td>
+            <td>{b.tenants?.name || '—'}</td>
+            <td className="nowrap">{Number(b.previous_reading).toFixed(1)} → {Number(b.current_reading).toFixed(1)}</td>
+            <td className="nowrap">{Number(b.units || 0).toFixed(2)}</td>
+            <td className="nowrap amount">{money(b.total_amount)}{Number(b.rent_amount) > 0 && <div className="muted small">incl. rent {money(b.rent_amount)}</div>}</td>
+            <td><StatusPill status={b.status} /></td>
+            <td className="small">{p ? <>{fmt(p.payment_date)}<div className="muted">{money(p.amount)} · {p.payment_mode}</div></> : '—'}</td>
+            <td><div className="row-actions nowrap">
+              {final && <button className="ghost" title="Download PDF" aria-label={'Download ' + b.bill_number} onClick={() => downloadStored(b, onError)}><Download size={15} /></button>}
+              {final && <button className="ghost" title="Share with tenant" aria-label={'Share ' + b.bill_number} onClick={() => onShare(b)}><Share2 size={15} /></button>}
+              {b.reading_photo_path && <button className="ghost" title="Meter photo" aria-label={'Photo for ' + b.bill_number} onClick={() => openPhoto(b, onError)}><Camera size={15} /></button>}
+            </div></td>
+          </tr>; })}
+        </Fragment>)}</tbody>
+      </table></div>
+    </>}
+  </section>;
+}
+
+function ShareBillModal({ bill, blob: givenBlob, dueDays, ownerName, onClose }) {
+  const info = useMemo(() => billShareInfo(bill, { dueDays, ownerName }), [bill, dueDays, ownerName]);
+  const [text, setText] = useState(() => billMessage(info));
+  const [file, setFile] = useState(() => (givenBlob ? pdfFile(givenBlob, bill.bill_number) : null));
+  const [loadingPdf, setLoadingPdf] = useState(!givenBlob);
+  const [note, setNote] = useState(null);
+
+  // Fetch the stored PDF up front, so tapping Share opens the share sheet immediately
+  // (browsers only allow it right after a tap).
+  useEffect(() => {
+    if (givenBlob || !bill.pdf_path) { setLoadingPdf(false); return; }
+    let live = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase.storage.from('electricity-bills').createSignedUrl(bill.pdf_path, 300);
+        if (error) throw error;
+        const res = await fetch(data.signedUrl);
+        if (!res.ok) throw Error('Download failed');
+        const b = await res.blob();
+        if (live) setFile(pdfFile(new Blob([b], { type: 'application/pdf' }), bill.bill_number));
+      } catch { if (live) setNote({ ok: false, text: 'Could not load the PDF; you can still share the message.' }); }
+      finally { if (live) setLoadingPdf(false); }
+    })();
+    return () => { live = false; };
+  }, [bill.pdf_path, bill.bill_number, givenBlob]);
+
+  const withFile = canShareFiles(file);
+  const share = async () => {
+    setNote(null);
+    try {
+      const sentFile = await shareBill({ text, file, title: 'Electricity bill ' + bill.bill_number });
+      if (!sentFile && file) setNote({ ok: true, text: 'Message shared. This browser can\'t attach files, so send the PDF using Download.' });
+    } catch (e) { if (e?.name !== 'AbortError') setNote({ ok: false, text: 'Sharing failed: ' + (e?.message || e) }); }
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setNote({ ok: true, text: 'Message copied.' }); }
+    catch { setNote({ ok: false, text: 'Copy failed. Select the text and copy it manually.' }); }
+  };
+
+  return <Modal title={'Share bill · ' + bill.bill_number} onClose={onClose}>
+    <p className="muted small">To {info.tenantName}{info.tenantPhone ? ' · ' + info.tenantPhone : ''} · {money(info.total)} · {Number(info.units || 0).toFixed(2)} kWh</p>
+    <label>Message<textarea className="share-text" value={text} onChange={e => setText(e.target.value)} rows={12} /></label>
+    <div className="share-file">{loadingPdf ? 'Preparing PDF…' : file ? <>📎 {bill.bill_number}.pdf will be attached{withFile ? '' : ' where supported'}</> : 'No PDF available for this bill.'}</div>
+    {note && <div className={note.ok ? 'success' : 'alert'}>{note.text}</div>}
+    <div className="actions share-actions">
+      {file && <button type="button" className="secondary" onClick={() => downloadBlob(file, file.name)}><Download size={16} />PDF</button>}
+      <button type="button" className="secondary" onClick={copy}>Copy</button>
+      {info.tenantPhone && <a className="button secondary" href={whatsappLink(info.tenantPhone, text)} target="_blank" rel="noreferrer">WhatsApp</a>}
+      {canShareText() && <button type="button" disabled={loadingPdf} onClick={share}><Share2 size={16} />Share{withFile ? ' with PDF' : ''}</button>}
+    </div>
+    {!canShareText() && <p className="hint">This browser has no share sheet. Use WhatsApp, Copy or PDF, or open the app on your phone.</p>}
   </Modal>;
 }

@@ -35,7 +35,7 @@ export function StatusPill({ status }) {
   return <span className={'pill ' + (STATUS_TONE[status] || '')}>{STATUS_LABEL[status] || status}</span>;
 }
 
-export function Modal({ title, onClose, children, wide = false }) {
+export function Modal({ title, onClose, children, wide = false, xwide = false }) {
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -43,7 +43,7 @@ export function Modal({ title, onClose, children, wide = false }) {
   }, [onClose]);
   return (
     <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={'modal' + (xwide ? ' xwide' : wide ? ' wide' : '')} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head"><h2>{title}</h2><button type="button" className="ghost" onClick={onClose} aria-label="Close"><X size={20} /></button></div>
         {children}
       </div>
