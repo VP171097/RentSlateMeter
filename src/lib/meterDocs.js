@@ -5,11 +5,30 @@ import { TEAL_DARK, drawFooter, drawLetterhead } from './billPdf';
 
 export const portalUrl = token => location.origin + location.pathname + '#/m/' + token;
 
+/** QR image with the meter code printed underneath, as a PNG data URL. */
+async function qrPngWithCode(qrDataUrl, code) {
+  const img = new Image();
+  img.src = qrDataUrl;
+  await img.decode();
+  const size = img.width, band = Math.round(size * 0.16);
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size + band;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0);
+  ctx.fillStyle = '#115e59'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  let px = Math.round(band * 0.62);
+  ctx.font = `bold ${px}px Helvetica, Arial, sans-serif`;
+  while (ctx.measureText(code).width > size * 0.9 && px > 12) { px -= 4; ctx.font = `bold ${px}px Helvetica, Arial, sans-serif`; }
+  ctx.fillText(code, size / 2, size + band * 0.38);
+  return canvas.toDataURL('image/png');
+}
+
 export async function downloadQR(m, format = 'png') {
   const data = await QRCode.toDataURL(portalUrl(m.public_token), { width: 1200, margin: 3, errorCorrectionLevel: 'H' });
   if (format === 'png') {
     const a = document.createElement('a');
-    a.href = data; a.download = m.meter_code + '-electricity-access.png'; a.click();
+    a.href = await qrPngWithCode(data, m.meter_code); a.download = m.meter_code + '-electricity-access.png'; a.click();
     return;
   }
   // Room/meter only — no tenant details — so the printed sticker stays valid
