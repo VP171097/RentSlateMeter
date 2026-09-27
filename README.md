@@ -47,7 +47,7 @@ npm run typecheck  # tsc -p jsconfig.json
 npm run build
 ```
 
-Optional `.env` overrides: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+Optional `.env` overrides: `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (the legacy name `VITE_SUPABASE_ANON_KEY` also works).
 
 ## Supabase
 
