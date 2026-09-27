@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Building2, Download, FileText, LogOut, Plus, QrCode, RefreshCw, UserRound, Zap } from 'lucide-react';
+import { ArrowUpRight, Building2, Camera, Download, FileText, LogOut, Plus, QrCode, RefreshCw, UserRound, Zap } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { createBillPdf, downloadBlob } from './lib/billPdf';
 import { downloadQR, downloadTenantSnapshotPdf, portalUrl } from './lib/meterDocs';
@@ -262,6 +262,7 @@ function Bills({ bills, onApprove, onPaid, onDownload, onError }) {
         <StatusPill status={b.status} />
         <div className="row-actions">
           {b.status === 'PENDING_APPROVAL' && <button className="sm" onClick={() => onApprove(b)}>Review</button>}
+          {b.reading_photo_path && b.status !== 'PENDING_APPROVAL' && <button className="secondary sm" onClick={() => openPhoto(b, onError)}><Camera size={14} />Photo</button>}
           {(b.status === 'APPROVED' || b.status === 'PAID') && <button className="secondary sm" onClick={() => onDownload(b, onError)}><Download size={14} />PDF</button>}
           {b.status === 'APPROVED' && <button className="sm" onClick={() => onPaid(b)}>Mark paid</button>}
         </div>
@@ -423,6 +424,29 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
   </Modal>;
 }
 
+function MeterPhoto({ path }) {
+  const [url, setUrl] = useState(null), [error, setError] = useState('');
+  useEffect(() => {
+    if (!path) return;
+    let live = true;
+    supabase.storage.from('meter-photos').createSignedUrl(path, 600).then(({ data, error }) => {
+      if (!live) return;
+      if (error) setError(error.message); else setUrl(data.signedUrl);
+    });
+    return () => { live = false; };
+  }, [path]);
+  if (!path) return <div className="photo-missing">No meter photo was attached to this reading.</div>;
+  if (error) return <div className="alert">Could not load the meter photo: {error}</div>;
+  if (!url) return <div className="photo-missing">Loading meter photo…</div>;
+  return <a href={url} target="_blank" rel="noreferrer" title="Open full-size photo"><img className="meter-photo" src={url} alt="Meter photo submitted by the tenant" /></a>;
+}
+
+async function openPhoto(b, onError) {
+  const { data, error } = await supabase.storage.from('meter-photos').createSignedUrl(b.reading_photo_path, 300);
+  if (error) return onError(error.message);
+  window.open(data.signedUrl, '_blank', 'noopener');
+}
+
 function ApproveModal({ bill, bills, settings, onClose, onDone }) {
   const [reading, setReading] = useState(String(bill.current_reading));
   const [rate, setRate] = useState(String(bill.rate_per_unit ?? settings.rate_per_unit ?? DEFAULT_RATE));
@@ -467,8 +491,10 @@ function ApproveModal({ bill, bills, settings, onClose, onDone }) {
     } catch (e) { setErr(e.message || 'Could not reject bill'); } finally { setSaving(false); }
   };
 
-  return <Modal title={'Review bill · ' + bill.bill_number} onClose={onClose}>
+  return <Modal wide title={'Review bill · ' + bill.bill_number} onClose={onClose}>
     <div className="mini-summary"><span>Previous reading<b>{kwh(previous)}</b></span><span>Tenant<b>{bill.tenants?.name || '—'}</b></span><span>Submitted<b>{fmt(bill.submitted_at)}</b></span><span>Meter<b>{bill.meters?.meter_code || '—'}</b></span></div>
+    <div className="eyebrow" style={{ margin: '14px 0 8px' }}>Meter photo · check it matches {kwh(bill.current_reading)}</div>
+    <MeterPhoto path={bill.reading_photo_path} />
     {bill.notes && <div className="download-note">Tenant note: {bill.notes}</div>}
     <label>Current kWh reading<input type="number" min={previous} step="0.001" value={reading} onChange={e => setReading(e.target.value)} /></label>
     <label>Rate per kWh (₹)<input type="number" min={0} step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>

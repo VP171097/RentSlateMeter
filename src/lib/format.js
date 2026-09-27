@@ -3,6 +3,14 @@ export const TAGLINE = 'Smart Electricity Billing';
 
 export const DEFAULT_RATE = 10;
 
+// Payment collection UPI ID printed on bills and offered in the tenant portal.
+export const UPI_ID = 'rentslate@ptaxis';
+export const UPI_PAYEE = 'RentSlate';
+/** Standard UPI deep link (NPCI "upi://pay"); any UPI app can scan or open it. */
+// Built by hand: several UPI apps reject "%40" in pa or "+" for spaces.
+export const upiLink = (amount, billNo) => 'upi://pay?pa=' + UPI_ID + '&pn=' + encodeURIComponent(UPI_PAYEE)
+  + '&am=' + Number(amount || 0).toFixed(2) + '&cu=INR&tn=' + encodeURIComponent(('Electricity bill ' + (billNo || '')).trim());
+
 export const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 export const round3 = n => Math.round((Number(n) || 0) * 1000) / 1000;
 

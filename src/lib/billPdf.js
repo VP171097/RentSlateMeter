@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
-import { APP_NAME, STATUS_LABEL, TAGLINE, pdfMoney as money } from './format';
+import { APP_NAME, STATUS_LABEL, TAGLINE, UPI_ID, UPI_PAYEE, pdfMoney as money, upiLink } from './format';
 
 // RentSlate brand colours (brand-600 / brand-800 / brand-50, gold-600).
 export const TEAL = [13, 148, 136];
@@ -43,6 +43,7 @@ export async function createBillPdf(bill, ctx, portalUrl) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const left = 12, width = 186;
   const qr = await QRCode.toDataURL(portalUrl, { width: 240, margin: 1, errorCorrectionLevel: 'H' });
+  const payQr = await QRCode.toDataURL(upiLink(bill.total_amount, bill.bill_number), { width: 320, margin: 1, errorCorrectionLevel: 'M' });
 
   const box = (x, y, w, h, fill = false) => {
     doc.setDrawColor(...RULE); doc.setLineWidth(.3);
@@ -114,7 +115,19 @@ export async function createBillPdf(bill, ctx, portalUrl) {
   doc.setFont('helvetica', 'bold'); doc.setTextColor(...INK); doc.text(bill.source === 'OWNER' ? 'Owner' : 'Tenant (owner approved)', 152, py + 31);
   doc.addImage(qr, 'PNG', 158, py + 36, 30, 30);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...MUTED); doc.text('Scan for your live account', 173, py + 71, { align: 'center' });
-  y = Math.max(tableEnd, py + 76) + 10;
+  y = Math.max(tableEnd, py + 76) + 8;
+
+  // UPI payment block
+  box(left, y, width, 46, true);
+  doc.addImage(payQr, 'PNG', 16, y + 4, 38, 38);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...TEAL_DARK); doc.text('Pay by UPI', 60, y + 10);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...INK);
+  doc.text('Scan this QR with any UPI app (GPay, PhonePe, Paytm, BHIM).', 60, y + 17);
+  doc.setFont('helvetica', 'bold'); doc.text('UPI ID: ' + UPI_ID, 60, y + 24);
+  doc.setFont('helvetica', 'normal'); doc.text('Payee: ' + UPI_PAYEE + '    Amount: ' + money(bill.total_amount), 60, y + 30);
+  doc.text('Reference: ' + bill.bill_number, 60, y + 36);
+  doc.setFontSize(7); doc.setTextColor(...MUTED); doc.text('The owner marks the bill paid after the payment is received.', 60, y + 41);
+  y += 56;
 
   title('Important Information', y);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...INK);
