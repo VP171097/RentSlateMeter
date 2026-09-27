@@ -307,18 +307,22 @@ function PropertySettings({ properties, meters, settingsFor, onSaved, onAdd, onD
 }
 
 function PropertyForm({ property, meterCount, settings, onSaved, onDelete }) {
-  const [name, setName] = useState(property.name || ''), [address, setAddress] = useState(property.address || '');
-  const [rate, setRate] = useState(settings.rate_per_unit ?? DEFAULT_RATE);
-  const [dueDays, setDueDays] = useState(settings.due_days ?? 7);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(''), [address, setAddress] = useState('');
+  const [rate, setRate] = useState(''), [dueDays, setDueDays] = useState('');
   const [msg, setMsg] = useState(null), [saving, setSaving] = useState(false);
-  useEffect(() => { setName(property.name || ''); setAddress(property.address || ''); }, [property]);
-  useEffect(() => { setRate(settings.rate_per_unit ?? DEFAULT_RATE); setDueDays(settings.due_days ?? 7); }, [settings]);
+
+  const startEdit = () => {
+    setName(property.name || ''); setAddress(property.address || '');
+    setRate(String(settings.rate_per_unit ?? DEFAULT_RATE)); setDueDays(String(settings.due_days ?? 7));
+    setMsg(null); setEditing(true);
+  };
   const save = async e => {
     e.preventDefault(); setMsg(null);
     const value = Number(rate), days = Number(dueDays), cleanName = name.trim().replace(/\s+/g, ' ');
     if (!cleanName) return setMsg({ ok: false, text: 'Property name is required. It appears on every PDF.' });
     if (rate === '' || !Number.isFinite(value) || value < 0) return setMsg({ ok: false, text: 'Enter a valid rate.' });
-    if (!Number.isInteger(days) || days < 0) return setMsg({ ok: false, text: 'Enter whole days.' });
+    if (dueDays === '' || !Number.isInteger(days) || days < 0) return setMsg({ ok: false, text: 'Enter whole days.' });
     setSaving(true);
     const [p, st] = await Promise.all([
       supabase.from('properties').update({ name: cleanName, address: address.trim() || null }).eq('id', property.id),
@@ -326,21 +330,42 @@ function PropertyForm({ property, meterCount, settings, onSaved, onDelete }) {
     ]);
     setSaving(false);
     const error = p.error || st.error;
-    if (error) setMsg({ ok: false, text: error.message }); else { setMsg({ ok: true, text: 'Saved. New PDFs will show the updated property details.' }); onSaved(); }
+    if (error) return setMsg({ ok: false, text: error.message });
+    setEditing(false);
+    setMsg({ ok: true, text: 'Saved. New PDFs will show the updated property details.' });
+    onSaved();
   };
-  return <form className="card" onSubmit={save}>
-    <div className="property-head"><div className="eyebrow">Property · {meterCount} meter{meterCount === 1 ? '' : 's'}</div>
-      <button type="button" className="secondary sm danger-outline" onClick={onDelete} disabled={meterCount > 0} title={meterCount > 0 ? 'Delete its meters first' : 'Delete property'}><Trash2 size={14} />Delete</button></div>
-    <div className="field-row">
-      <label>Property name <span className="hint-inline">(shown on all PDFs)</span><input value={name} maxLength={100} onChange={e => setName(e.target.value)} placeholder="e.g. Sai Residency" /></label>
-      <label>Address<input value={address} maxLength={200} onChange={e => setAddress(e.target.value)} placeholder="Shown on bills" /></label>
-    </div>
-    <div className="settings-form">
-      <label>Rate per kWh (₹)<input type="number" min="0" step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>
-      <label>Due in (days)<input type="number" min="0" step="1" value={dueDays} onChange={e => setDueDays(e.target.value)} /></label>
-      <button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+
+  const head = <div className="property-head"><div className="eyebrow">Property · {meterCount} meter{meterCount === 1 ? '' : 's'}</div>
+    {!editing && <div className="row-actions">
+      <button type="button" className="secondary sm" onClick={startEdit}><Pencil size={14} />Edit</button>
+      <button type="button" className="secondary sm danger-outline" onClick={onDelete} disabled={meterCount > 0} title={meterCount > 0 ? 'Delete its meters first' : 'Delete property'}><Trash2 size={14} />Delete</button>
+    </div>}</div>;
+
+  if (!editing) return <section className="card">
+    {head}
+    <h2 className="property-name">{property.name}</h2>
+    <p className="muted small">{property.address || 'No address added'}</p>
+    <div className="property-facts">
+      <Info a="Rate" b={money(settings.rate_per_unit ?? DEFAULT_RATE) + ' / kWh'} />
+      <Info a="Bill due in" b={(settings.due_days ?? 7) + ' days'} />
     </div>
     {msg && <div className={msg.ok ? 'success' : 'alert'}>{msg.text}</div>}
+    {meterCount > 0 && <p className="hint">To delete this property, delete its meters first.</p>}
+  </section>;
+
+  return <form className="card" onSubmit={save}>
+    {head}
+    <div className="field-row">
+      <label>Property name <span className="hint-inline">(shown on all PDFs)</span><input autoFocus value={name} maxLength={100} onChange={e => setName(e.target.value)} placeholder="e.g. Sai Residency" /></label>
+      <label>Address<input value={address} maxLength={200} onChange={e => setAddress(e.target.value)} placeholder="Shown on bills" /></label>
+    </div>
+    <div className="field-row">
+      <label>Rate per kWh (₹)<input type="number" min="0" step="0.01" value={rate} onChange={e => setRate(e.target.value)} /></label>
+      <label>Due in (days)<input type="number" min="0" step="1" value={dueDays} onChange={e => setDueDays(e.target.value)} /></label>
+    </div>
+    {msg && <div className={msg.ok ? 'success' : 'alert'}>{msg.text}</div>}
+    <div className="actions"><button type="button" className="secondary" onClick={() => { setEditing(false); setMsg(null); }} disabled={saving}>Cancel</button><button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button></div>
   </form>;
 }
 
