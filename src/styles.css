@@ -228,6 +228,12 @@ html.dark .pill.red { background: rgba(127,29,29,.4); color: #fca5a5; }
 .filters button.active { background: var(--brand-700); color: #fff; border-color: transparent; }
 
 .settings-list { display: grid; gap: 14px; }
+.property-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+.hint-inline { font-weight: 400; color: var(--text-faint); font-size: 12px; }
+.danger-outline { color: var(--red-600); }
+.danger-outline:hover:not(:disabled) { background: var(--red-50); border-color: var(--red-600); }
+html.dark .danger-outline { color: #fca5a5; }
+html.dark .danger-outline:hover:not(:disabled) { background: rgba(127,29,29,.35); }
 .settings-form { display: grid; grid-template-columns: 1fr 200px auto; gap: 12px; align-items: end; }
 .settings-form label { margin: 0; }
 

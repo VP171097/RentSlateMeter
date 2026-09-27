@@ -15,7 +15,7 @@ export async function downloadQR(m, format = 'png') {
   // Room/meter only — no tenant details — so the printed sticker stays valid
   // across tenant changes, exactly like the QR code itself.
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  drawLetterhead(doc, { title: m.properties?.name || 'Electricity Account', subtitle: 'Permanent Meter Access', address: m.properties?.address });
+  drawLetterhead(doc, { property: m.properties, title: 'Permanent Meter Access' });
   doc.addImage(data, 'PNG', 45, 48, 120, 120);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...TEAL_DARK);
   doc.text('Room ' + (m.rooms?.room_number || '—') + ' · Floor ' + (m.rooms?.floor || '—'), 105, 182, { align: 'center' });
@@ -36,7 +36,7 @@ export async function downloadTenantSnapshotPdf(m, bills, settings) {
   const line = (label, value, y) => { doc.setFont('helvetica', 'bold'); doc.text(label, 20, y); doc.setFont('helvetica', 'normal'); doc.text(String(value || '—'), 62, y, { maxWidth: 135 }); };
   const heading = (t, y) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...TEAL_DARK); doc.text(t, 20, y); doc.setFontSize(10); doc.setTextColor(28, 26, 22); };
 
-  drawLetterhead(doc, { title: 'Tenant & Room Snapshot', subtitle: 'Generated on ' + new Date().toLocaleString('en-IN'), address: m.properties?.name });
+  drawLetterhead(doc, { property: m.properties, title: 'Tenant & Room Snapshot', subtitle: 'Generated on ' + new Date().toLocaleString('en-IN') });
   heading('Property & Room', 52);
   line('Property', m.properties?.name, 62); line('Address', m.properties?.address, 70); line('Floor', m.rooms?.floor, 78); line('Room number', m.rooms?.room_number, 86);
   line('Meter code', m.meter_code, 94); line('Meter number', m.meter_number, 102); line('Meter status', m.status, 110);
@@ -49,7 +49,7 @@ export async function downloadTenantSnapshotPdf(m, bills, settings) {
   line('Last paid bill date', lastPaid ? fmt(lastPaid.bill_date) : '—', 234);
 
   doc.addPage();
-  drawLetterhead(doc, { title: 'Recent Electricity Bills', subtitle: m.meter_code + ' · Room ' + (m.rooms?.room_number || '—'), address: m.properties?.name });
+  drawLetterhead(doc, { property: m.properties, title: 'Recent Electricity Bills', subtitle: 'Meter ' + m.meter_code + ' · Room ' + (m.rooms?.room_number || '—') });
   let y = 50;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...TEAL_DARK);
   ['Bill number', 'Date', 'Consumption', 'Amount', 'Status'].forEach((h, i) => doc.text(h, [20, 72, 102, 140, 170][i], y));
@@ -65,7 +65,7 @@ export async function downloadTenantSnapshotPdf(m, bills, settings) {
 
   doc.addPage();
   const qr = await QRCode.toDataURL(portalUrl(m.public_token), { width: 1400, margin: 4, errorCorrectionLevel: 'H' });
-  drawLetterhead(doc, { title: 'Permanent Meter Access', subtitle: 'Room ' + (m.rooms?.room_number || '—') + ' · ' + m.meter_code, address: m.properties?.name });
+  drawLetterhead(doc, { property: m.properties, title: 'Permanent Meter Access', subtitle: 'Room ' + (m.rooms?.room_number || '—') + ' · Meter ' + m.meter_code });
   doc.addImage(qr, 'PNG', 45, 50, 120, 120);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('Current tenant: ' + (tenant?.name || 'Vacant'), 105, 182, { align: 'center' });
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
