@@ -1,66 +1,57 @@
-# Electricity Bill Manager
+# RentSlate Meter
 
-Standalone Electricity billing for rental rooms/meters.
+**Smart Electricity Billing** for rental rooms, part of the RentSlate family. It uses the same "Ledger" look as RentSlate: a deep-teal and marigold palette on warm paper-cream, with DM Sans and Playfair Display type. It has light, dark and system themes, and the theme preference is shared with RentSlate.
 
-## Core workflow
+Each physical meter has a permanent QR code. Scanning it opens that meter's electricity account, so the sticker never changes when the tenant does.
 
-Each physical meter has a permanent QR code. Scanning it opens the tenant electricity portal without requiring a new sticker when the tenant changes.
+## Workflow
 
 ### Tenant
-1. Scan the meter QR.
-2. View room, tenant, meter, last paid reading, last payment amount/date and billing rate.
-3. Enter only the current meter reading.
-4. The server captures the bill date automatically.
-5. The bill is created as **Pending Approval**.
-6. The tenant can see the submission but cannot download a final PDF until the owner approves it.
-7. After approval, the bill PDF is stored privately and becomes downloadable.
-8. The electricity portal shows the latest six approved/paid bills with PDF download links.
+1. Scan the meter QR and enter the mobile number the owner registered. There is no OTP or password; the server checks the number.
+2. View the room, meter, last paid reading, last payment and rate.
+3. Enter only the current kWh reading. The bill date is captured automatically.
+4. The bill is created as **Pending approval**. No PDF is available until the owner approves it.
+5. Download PDFs for the latest six approved or paid bills.
 
 ### Owner
-1. Sign in to the owner console.
-2. Generate a bill directly from any meter by entering the current reading.
-3. Owner-generated bills are finalized and downloaded immediately.
-4. Review tenant-submitted bills.
-5. Edit current reading/rate/fixed charge/tax if required.
-6. Approve the bill and create the final PDF.
-7. Mark approved bills as paid with payment date, amount and payment mode.
-8. Configure the property billing electricity rate.
+1. Sign in to the owner console. The first account created becomes the administrator.
+2. Add properties, then rooms and meters, with an opening reading for each meter.
+3. Assign tenants with their registered mobile number, or move a tenant out. Bill history is kept.
+4. Generate a bill directly from a meter. It is final and the PDF downloads immediately.
+5. Review tenant readings: edit the reading or rate, then **Approve & create PDF**, or **Reject**.
+6. Record payments (amount, date, mode, receipt number) to mark bills paid.
+7. Set the electricity rate (default ₹10/kWh) and due days for each property.
+8. Download the meter QR as a PNG or PDF, and a tenant and room snapshot PDF.
 
-## Bill design
-
-The generated PDF follows the supplied reference bill's information architecture: account/tenant section, billing summary, calculation details, meter reading details, last payment details, six-month consumption and a QR back to the live account portal. It is a property-managed electricity bill and is not presented as an official utility-company bill.
+Each meter can have only one open bill (pending or unpaid) at a time. This is enforced in the database.
 
 ## Security
 
-- Standalone Supabase project.
-- RLS enabled on exposed billing tables.
-- Owner changes require an authenticated admin.
-- Tenant meter access is scoped to one permanent opaque meter token.
-- Final PDFs are stored in a private Storage bucket.
-- Tenant downloads use short-lived signed URLs.
-- Service-role credentials are used only inside the Edge Function and are never shipped to the browser.
+- RLS is enabled on every table. Owner reads and writes require an admin (`admin_users`).
+- Tenant access goes only through the `meter-portal` Edge Function. It needs **both** the meter's opaque QR token and the registered mobile number (sent in the `x-meter-mobile` header).
+- The printed meter QR PDF does not show the tenant's mobile number.
+- Final PDFs are stored in a private bucket, and tenants get 15-minute signed URLs.
+- The service-role key is used only inside the Edge Function and is never shipped to the browser. The browser uses the publishable key only.
 
-## Database
+## Development
 
-Main entities:
-- properties
-- rooms
-- meters
-- tenants
-- tenant_assignments
-- billing_settings
-- electricity_bills
-- bill_payments
-- bill_events
+```bash
+npm ci
+npm run dev        # http://localhost:5173/DynamicQR/
+npm run lint       # eslint, zero warnings allowed
+npm run typecheck  # tsc -p jsconfig.json
+npm run build
+```
+
+Optional `.env` overrides: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 
 ## Supabase
 
-Project: DynamicQR
-Region: ap-south-1
+- Project: DynamicQR (ap-south-1).
+- Apply the migrations in `supabase/migrations/` in order. `20260928090000_rentslate_meter_fixes.sql` fixes admin bootstrap, RLS recursion and audit-event inserts. It also adds default billing settings for each property and the one-open-bill-per-meter index.
+- Deploy the portal function without JWT verification, because tenants have no Supabase account:
+  `supabase functions deploy meter-portal --no-verify-jwt`
 
-The browser uses the Supabase publishable key. Never put a service-role/secret key in GitHub Pages or frontend code. Tenant access uses the owner-registered mobile number only; there is no OTP or password for tenant access.
+## Deployment
 
-## GitHub Pages
-
-Deployment is handled by .github/workflows/deploy.yml.
-The application base path is /DynamicQR/.
+GitHub Pages is deployed by `.github/workflows/deploy.yml` (lint → typecheck → build) on every push to `main`. The base path is `/DynamicQR/`.
