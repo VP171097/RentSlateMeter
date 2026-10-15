@@ -1,7 +1,8 @@
 // RentSlate Meter service worker: makes the app installable and keeps the app
 // shell available offline. It never caches Supabase/API or cross-origin
 // requests — bills, readings and logins always come from the network.
-const CACHE = 'rentslate-meter-v1';
+const CACHE = 'rentslate-meter-v2';
+const NAV_TIMEOUT_MS = 6000;
 const SHELL = ['./', './manifest.webmanifest', './favicon.svg', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', event => {
@@ -21,12 +22,18 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // Pages: network first so a new deploy shows immediately; cached shell offline.
+  // Pages: network first so a new deploy shows immediately; if the network is
+  // down or too slow, fall back to the cached app shell instead of hanging.
   if (req.mode === 'navigate') {
+    const network = fetch(req).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put('./', copy)); }
+      return res;
+    });
+    const slow = new Promise(resolve => setTimeout(resolve, NAV_TIMEOUT_MS)).then(() => caches.match('./'));
     event.respondWith(
-      fetch(req)
-        .then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put('./', copy)); return res; })
-        .catch(() => caches.match('./'))
+      Promise.race([network, slow])
+        .then(res => res || network)
+        .catch(() => caches.match('./').then(hit => hit || network))
     );
     return;
   }

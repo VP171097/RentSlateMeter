@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, processLock } from '@supabase/supabase-js'
 
 // Publishable (browser-safe) key. Never put a service-role/secret key here.
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://ztsucnutfmlernqayqwx.supabase.co'
@@ -17,4 +17,25 @@ export const AUTH_LINK = {
 }
 if (AUTH_LINK.error) history.replaceState(null, '', location.pathname + location.search)
 
-export const supabase = createClient(SUPABASE_URL, PUBLIC_KEY)
+// Every Supabase request gets a time limit, so a stalled mobile connection
+// fails (and can be retried) instead of leaving the app waiting forever.
+const REQUEST_TIMEOUT_MS = 30000
+function fetchWithTimeout(input, init = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), REQUEST_TIMEOUT_MS)
+  if (init.signal) {
+    if (init.signal.aborted) controller.abort(init.signal.reason)
+    else init.signal.addEventListener('abort', () => controller.abort(init.signal.reason), { once: true })
+  }
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer))
+}
+
+export const AUTH_STORAGE_KEY = 'sb-' + new URL(SUPABASE_URL).hostname.split('.')[0] + '-auth-token'
+
+export const supabase = createClient(SUPABASE_URL, PUBLIC_KEY, {
+  // The default cross-tab lock (navigator.locks) is waited on with no time
+  // limit at start-up; a frozen background tab or the installed app holding it
+  // left the app stuck on the logo. An in-tab lock can't be blocked that way.
+  auth: { lock: processLock },
+  global: { fetch: fetchWithTimeout },
+})
