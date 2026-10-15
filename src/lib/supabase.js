@@ -5,6 +5,12 @@ export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://ztsucn
 export const PUBLIC_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_XHkcEEx_K1YoOOSDAJD_8Q_0kmd4VUq'
 export const EDGE_URL = SUPABASE_URL + '/functions/v1/meter-portal'
 
+// RentSlate Meter lives in its own "meter" schema and buckets, so it can share a
+// Supabase project with other apps (Finance Dashboard) without any overlap.
+export const DB_SCHEMA = 'meter'
+export const BILLS_BUCKET = 'meter-bills'
+export const PHOTOS_BUCKET = 'meter-photos'
+
 // Read the auth-email link state before the client consumes and clears the
 // URL fragment (password-reset links arrive as #access_token=…&type=recovery,
 // expired links as #error=…&error_description=…).
@@ -37,5 +43,6 @@ export const supabase = createClient(SUPABASE_URL, PUBLIC_KEY, {
   // limit at start-up; a frozen background tab or the installed app holding it
   // left the app stuck on the logo. An in-tab lock can't be blocked that way.
   auth: { lock: processLock },
+  db: { schema: DB_SCHEMA },
   global: { fetch: fetchWithTimeout },
 })

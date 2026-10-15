@@ -4,7 +4,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 // (`supabase functions deploy meter-portal --no-verify-jwt`): tenants have no
 // Supabase account. Access requires BOTH the meter's opaque QR token and the
 // mobile number the owner registered for the active tenant.
-const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+// RentSlate Meter data lives in the "meter" schema and "meter-*" buckets, so this
+// project can be shared with other apps (Finance Dashboard).
+const BILLS_BUCKET = "meter-bills", PHOTOS_BUCKET = "meter-photos";
+const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { db: { schema: "meter" } });
 const headers = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
@@ -67,7 +70,7 @@ Deno.serve(async req => {
 
     const resultBills = await Promise.all((bills || []).map(async ({ pdf_path, ...b }) => {
       if (!pdf_path) return { ...b, download_url: null };
-      const { data: signed } = await supabase.storage.from("electricity-bills").createSignedUrl(pdf_path, 900, { download: b.bill_number + ".pdf" });
+      const { data: signed } = await supabase.storage.from(BILLS_BUCKET).createSignedUrl(pdf_path, 900, { download: b.bill_number + ".pdf" });
       return { ...b, download_url: signed?.signedUrl || null };
     }));
 
@@ -109,7 +112,7 @@ Deno.serve(async req => {
 
   const billId = crypto.randomUUID();
   const photoPath = `${meter.property_id}/${meter.id}/${billId}.${photoType.ext}`;
-  const upload = await supabase.storage.from("meter-photos").upload(photoPath, photoBytes, { contentType: photoType.mime, upsert: false });
+  const upload = await supabase.storage.from(PHOTOS_BUCKET).upload(photoPath, photoBytes, { contentType: photoType.mime, upsert: false });
   if (upload.error) return json({ error: "Could not upload the meter photo. Please try again." }, 500);
 
   const { data: bill, error } = await supabase.from("electricity_bills").insert({
@@ -119,7 +122,7 @@ Deno.serve(async req => {
   }).select("id,bill_number,bill_date,previous_reading,current_reading,units,rate_per_unit,energy_charge,fixed_charge,tax_amount,total_amount,status,source").single();
   // 23505: the one-open-bill-per-meter index caught a concurrent submission.
   if (error) {
-    await supabase.storage.from("meter-photos").remove([photoPath]);
+    await supabase.storage.from(PHOTOS_BUCKET).remove([photoPath]);
     return json({ error: error.code === "23505" ? "A bill is already open for this meter." : "Could not submit the reading." }, error.code === "23505" ? 409 : 400);
   }
   await supabase.from("bill_events").insert({ bill_id: bill.id, event_type: "TENANT_SUBMITTED", new_values: bill });

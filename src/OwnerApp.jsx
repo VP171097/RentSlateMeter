@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Building2, Camera, Download, FileText, KeyRound, LogOut, Pencil, Plus, QrCode, RefreshCw, Rows3, Share2, Trash2, UserRound, Zap } from 'lucide-react';
-import { supabase } from './lib/supabase';
+import { BILLS_BUCKET, PHOTOS_BUCKET, supabase } from './lib/supabase';
 import { createBillPdf, downloadBlob } from './lib/billPdf';
 import { downloadQR, downloadTenantSnapshotPdf, portalUrl } from './lib/meterDocs';
 import {
@@ -156,7 +156,7 @@ export default function OwnerApp() {
 
 async function downloadStored(b, onError) {
   if (!b.pdf_path) return onError('The PDF for ' + b.bill_number + ' is not available yet.');
-  const { data, error } = await supabase.storage.from('electricity-bills').createSignedUrl(b.pdf_path, 300, { download: b.bill_number + '.pdf' });
+  const { data, error } = await supabase.storage.from(BILLS_BUCKET).createSignedUrl(b.pdf_path, 300, { download: b.bill_number + '.pdf' });
   if (error) return onError(error.message);
   location.href = data.signedUrl;
 }
@@ -560,7 +560,7 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
       const history = [bill, ...(await paidHistory(meter.id))];
       const ctx = { property: meter.properties, meter: { code: meter.meter_code, number: meter.meter_number }, room: meter.rooms, tenant, moveInDate: activeAssignment(meter)?.move_in_date, history, lastPayment: lastPaymentFor(meter.id, bills), previousDate: lastPaid?.reading_date, dueDays: settings.due_days };
       const blob = await createBillPdf(bill, ctx, portalUrl(meter.public_token));
-      const up = await supabase.storage.from('electricity-bills').upload(path, blob, { contentType: 'application/pdf', upsert: false });
+      const up = await supabase.storage.from(BILLS_BUCKET).upload(path, blob, { contentType: 'application/pdf', upsert: false });
       if (up.error) throw up.error;
       uploaded = path;
       const { error } = await supabase.from('electricity_bills').insert({ ...row, pdf_path: path });
@@ -569,7 +569,7 @@ function GenerateModal({ meter, bills, settings, onClose, onDone }) {
       await logEvent(id, 'OWNER_GENERATED', user.id, { current_reading: current, rate_per_unit: rate, total_amount: c.total });
       await onDone({ ...bill, pdf_path: path, meters: { meter_code: meter.meter_code, meter_number: meter.meter_number, public_token: meter.public_token, rooms: meter.rooms, properties: meter.properties }, tenants: tenant ? { name: tenant.name, phone: tenant.phone } : null, bill_payments: [] }, blob);
     } catch (e) {
-      if (uploaded) await supabase.storage.from('electricity-bills').remove([uploaded]);
+      if (uploaded) await supabase.storage.from(BILLS_BUCKET).remove([uploaded]);
       setErr(e.message || 'Could not generate bill');
     } finally { setSaving(false); }
   };
@@ -592,7 +592,7 @@ function MeterPhoto({ path }) {
   useEffect(() => {
     if (!path) return;
     let live = true;
-    supabase.storage.from('meter-photos').createSignedUrl(path, 600).then(({ data, error }) => {
+    supabase.storage.from(PHOTOS_BUCKET).createSignedUrl(path, 600).then(({ data, error }) => {
       if (!live) return;
       if (error) setError(error.message); else setUrl(data.signedUrl);
     });
@@ -605,7 +605,7 @@ function MeterPhoto({ path }) {
 }
 
 async function openPhoto(b, onError) {
-  const { data, error } = await supabase.storage.from('meter-photos').createSignedUrl(b.reading_photo_path, 300);
+  const { data, error } = await supabase.storage.from(PHOTOS_BUCKET).createSignedUrl(b.reading_photo_path, 300);
   if (error) return onError(error.message);
   window.open(data.signedUrl, '_blank', 'noopener');
 }
@@ -636,7 +636,7 @@ function ApproveModal({ bill, bills, settings, onClose, onDone, onApproved }) {
       const ctx = { property: bill.meters?.properties, meter: { code: bill.meters?.meter_code, number: bill.meters?.meter_number }, room: bill.meters?.rooms, tenant: bill.tenants, moveInDate: billMoveIn(bill), history, lastPayment: lastPaymentFor(bill.meter_id, bills), previousDate: lastPaid?.reading_date, dueDays: settings.due_days };
       const blob = await createBillPdf(merged, ctx, portalUrl(bill.meters?.public_token));
       const path = bill.property_id + '/' + bill.meter_id + '/' + bill.id + '.pdf';
-      const up = await supabase.storage.from('electricity-bills').upload(path, blob, { contentType: 'application/pdf', upsert: true });
+      const up = await supabase.storage.from(BILLS_BUCKET).upload(path, blob, { contentType: 'application/pdf', upsert: true });
       if (up.error) throw up.error;
       const { data, error } = await supabase.from('electricity_bills').update({ ...changes, pdf_path: path }).eq('id', bill.id).eq('status', 'PENDING_APPROVAL').select('id');
       if (error) throw rentError(error);
@@ -788,9 +788,9 @@ function DeleteMeterModal({ meter, onClose, onDone }) {
       }
       // Then every stored file for this meter: bill PDFs and meter photos.
       const prefix = data?.storage_prefix || meter.property_id + '/' + meter.id;
-      const referenced = { 'electricity-bills': (bills || []).map(b => b.pdf_path), 'meter-photos': (bills || []).map(b => b.reading_photo_path) };
+      const referenced = { [BILLS_BUCKET]: (bills || []).map(b => b.pdf_path), [PHOTOS_BUCKET]: (bills || []).map(b => b.reading_photo_path) };
       const failed = [];
-      for (const bucket of ['electricity-bills', 'meter-photos']) {
+      for (const bucket of [BILLS_BUCKET, PHOTOS_BUCKET]) {
         const { data: files } = await supabase.storage.from(bucket).list(prefix, { limit: 1000 });
         const paths = new Set([...(files || []).map(f => prefix + '/' + f.name), ...referenced[bucket].filter(Boolean)]);
         if (paths.size) {
@@ -1043,7 +1043,7 @@ function ShareBillModal({ bill, blob: givenBlob, dueDays, ownerName, onClose }) 
     let live = true;
     (async () => {
       try {
-        const { data, error } = await supabase.storage.from('electricity-bills').createSignedUrl(bill.pdf_path, 300);
+        const { data, error } = await supabase.storage.from(BILLS_BUCKET).createSignedUrl(bill.pdf_path, 300);
         if (error) throw error;
         const res = await fetch(data.signedUrl);
         if (!res.ok) throw Error('Download failed');

@@ -61,12 +61,16 @@ Optional `.env` overrides: `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KE
 
 ## Supabase
 
-- Project: DynamicQR (ap-south-1).
-- Apply the migrations in `supabase/migrations/` in order. `20260928090000_rentslate_meter_fixes.sql` fixes admin bootstrap, RLS recursion and audit-event inserts. It also adds default billing settings for each property and the one-open-bill-per-meter index. `20260928100000_meter_photos.sql` adds the meter photo column and bucket. `20260928110000_owner_login.sql` adds `admin_exists()` for the sign-in page. `20260928120000_delete_meter.sql` adds `delete_meter()`, which deletes a meter and all its data in one transaction. `20260928140000_bill_rent.sql` adds the optional `rent_amount`/`rent_period` columns. `20260928130000_delete_meter_tenants.sql` makes it also delete the tenant details of everyone who lived on that meter, except tenants currently living in another room.
-- Under **Authentication → URL Configuration**, set the Site URL and add a Redirect URL for `https://vp171097.github.io/RentSlateMeter/`. Password-reset and confirmation emails return there.
-- After the owner account is created, you can turn off **Allow new users to sign up** under Authentication → Sign In / Providers. Other accounts can't access owner data anyway.
-- Deploy the portal function without JWT verification, because tenants have no Supabase account:
-  `supabase functions deploy meter-portal --no-verify-jwt`
+RentSlate Meter runs inside the **Finance Dashboard** Supabase project, in its own schema `meter`, so it doesn't count as an extra free project and can't touch Finance Dashboard data. Its storage buckets are `meter-bills` and `meter-photos`, and its owner admins (`meter.admin_users`) are separate from Finance Dashboard users.
+
+Setup in that project:
+1. SQL Editor → run `supabase/setup_meter_schema.sql` once. It creates all tables, functions, security rules and buckets in the `meter` schema; it was generated from `supabase/migrations/` with `public.` → `meter.`.
+2. Project Settings → **Data API** → **Exposed schemas** → add `meter`.
+3. Edge Functions → deploy `supabase/functions/meter-portal/index.ts` as `meter-portal` with **Verify JWT off**, because tenants have no Supabase account.
+4. Authentication → URL Configuration → add `https://vp171097.github.io/RentSlateMeter/` to **Redirect URLs**. Leave Finance Dashboard's Site URL as it is.
+5. Open the app and sign in. An existing account from the same project can be used, or **Set up owner account** creates a new one. The first owner to sign in becomes the meter admin.
+
+The files in `supabase/migrations/` are the history of the original standalone project (public schema).
 
 ## Deployment
 
