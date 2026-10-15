@@ -370,3 +370,7 @@ html.dark .pending-box { background: rgba(120,53,15,.25); border-color: rgba(217
   .history-row { grid-template-columns: 1fr auto; }
   .history-row > :last-child { grid-column: 1 / -1; }
 }
+
+/* ─── Start-up screen ─── */
+.loading-screen { display: grid; justify-items: center; gap: 18px; text-align: center; max-width: 340px; }
+.loading-help { display: grid; gap: 12px; animation: page-fade-in .25s ease-out; }
